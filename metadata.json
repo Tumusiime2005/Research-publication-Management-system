@@ -1,0 +1,6 @@
+{
+  "name": "BRAIN HUB - Research Publication Management System",
+  "description": "Production-ready academic research publication platform with Spring Boot backend architecture, PostgreSQL persistence, and Next.js frontend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

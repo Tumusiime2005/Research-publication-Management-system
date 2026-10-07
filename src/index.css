@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary-purple: #6D28D9;
+    --secondary-purple: #8B5CF6;
+    --powder-blue: #B0D9F2;
+    --accent-orange: #F97316;
+    --bg-light: #F8FAFC;
+    --text-dark: #1E1B4B;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: var(--text-dark);
+    background-color: var(--bg-light);
+  }
+
+  code, pre, .font-mono, .tabular-nums {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
