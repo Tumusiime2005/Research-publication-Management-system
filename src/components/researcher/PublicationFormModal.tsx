@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Publication, User, PublicationAuthor } from '../../types';
 import { db, generateUUID } from '../../services/db';
-import { X, Plus, Trash2, Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { sendGmailNotification } from '../../services/gmail';
+import { isGoogleConnected } from '../../services/googleAuth';
+import { X, Plus, Trash2, Upload, FileText, AlertCircle, CheckCircle2, Mail, Send } from 'lucide-react';
 
 interface PublicationFormModalProps {
   isOpen: boolean;
@@ -22,6 +24,7 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
   const [abstractText, setAbstractText] = useState('');
   const [researchArea, setResearchArea] = useState('Computer Science & AI');
   const [keywords, setKeywords] = useState('');
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
   // Authors
   const [authors, setAuthors] = useState<Array<{ name: string; email: string; order: number; isUser: boolean }>>([]);
@@ -209,6 +212,19 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
             isRead: false,
           });
         });
+
+        // Send submission receipt to author's device via Gmail
+        if (isGoogleConnected()) {
+          sendGmailNotification({
+            toEmail: currentUser.email,
+            recipientName: `${currentUser.firstName} ${currentUser.lastName}`,
+            subject: `[BRAIN HUB] Submission Receipt: "${publicationData.title}"`,
+            headerTitle: 'Manuscript Submitted for Review',
+            bodyContent: `Your research manuscript "${publicationData.title}" has been submitted to the editorial review board. You will receive email notifications directly on your devices as reviews proceed.`,
+            paperTitle: publicationData.title,
+            paperStatus: 'SUBMITTED',
+          }).catch(console.error);
+        }
       } else {
         db.recordAudit(
           currentUser,

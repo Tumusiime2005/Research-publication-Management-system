@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Publication, User, ReviewDecision } from '../../types';
 import { db, generateUUID } from '../../services/db';
-import { X, ShieldCheck, Download, AlertCircle, CheckCircle2, RotateCcw, XCircle, FileText } from 'lucide-react';
+import { sendGmailNotification } from '../../services/gmail';
+import { isGoogleConnected, signInWithGoogle } from '../../services/googleAuth';
+import { X, ShieldCheck, Download, AlertCircle, CheckCircle2, RotateCcw, XCircle, FileText, Mail, Send } from 'lucide-react';
 
 interface ReviewModalProps {
   publication: Publication | null;
@@ -18,30 +20,17 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 }) => {
   const [decision, setDecision] = useState<ReviewDecision>('APPROVED');
   const [verificationNotes, setVerificationNotes] = useState('');
+  const [notifyViaGmail, setNotifyViaGmail] = useState(true);
+  const [emailStatus, setEmailStatus] = useState<string | null>(null);
+  const [showEmailConfirm, setShowEmailConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!publication) return null;
 
-  const handleSubmitDecision = () => {
-    setError(null);
-
-    if (decision === 'REJECTED' && verificationNotes.trim().length < 10) {
-      setError('A formal rejection requires comprehensive reviewer notes explaining deficiencies (minimum 10 characters).');
-      return;
-    }
-
-    if (decision === 'REVISION_REQUESTED' && verificationNotes.trim().length < 10) {
-      setError('Please specify the exact revisions and editorial corrections requested for the author.');
-      return;
-    }
-
-    if (!verificationNotes.trim()) {
-      setError('Verification notes are required for institutional record.');
-      return;
-    }
-
+  const executeDecision = async (sendEmail: boolean) => {
     setSubmitting(true);
+    setShowEmailConfirm(false);
 
     try {
       const now = new Date().toISOString();
@@ -100,12 +89,61 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         isRead: false,
       });
 
+      // Dispatch real Gmail notification directly to the researcher's device
+      if (sendEmail && isGoogleConnected()) {
+        const mailRes = await sendGmailNotification({
+          toEmail: publication.submittedBy.email,
+          recipientName: `${publication.submittedBy.firstName} ${publication.submittedBy.lastName}`,
+          subject: `[BRAIN HUB] Research Decision: ${decision} - "${publication.title}"`,
+          headerTitle: notifTitle,
+          bodyContent: notifMessage,
+          paperTitle: publication.title,
+          paperStatus: updatedPub.status,
+          decisionNotes: verificationNotes.trim(),
+        });
+
+        if (mailRes.success) {
+          db.recordAudit(
+            currentUser,
+            'GMAIL_NOTIFICATION_SENT',
+            'PUBLICATION',
+            publication.id,
+            `Notification email successfully sent via Gmail to ${publication.submittedBy.email}`
+          );
+        }
+      }
+
       setSubmitting(false);
       onSuccess();
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to submit review');
       setSubmitting(false);
+    }
+  };
+
+  const handleSubmitDecision = () => {
+    setError(null);
+
+    if (decision === 'REJECTED' && verificationNotes.trim().length < 10) {
+      setError('A formal rejection requires comprehensive reviewer notes explaining deficiencies (minimum 10 characters).');
+      return;
+    }
+
+    if (decision === 'REVISION_REQUESTED' && verificationNotes.trim().length < 10) {
+      setError('Please specify the exact revisions and editorial corrections requested for the author.');
+      return;
+    }
+
+    if (!verificationNotes.trim()) {
+      setError('Verification notes are required for institutional record.');
+      return;
+    }
+
+    if (notifyViaGmail && isGoogleConnected()) {
+      setShowEmailConfirm(true);
+    } else {
+      executeDecision(false);
     }
   };
 
@@ -278,6 +316,50 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               {verificationNotes.length} characters entered.
             </p>
           </div>
+
+          {/* Gmail Device Notification Option */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-red-50 text-[#EA4335] flex items-center justify-center shrink-0">
+                <Mail className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900">
+                  Notify Author's Device via Gmail
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Sends formatted decision email to <span className="font-mono text-slate-700">{publication.submittedBy.email}</span>.
+                </p>
+              </div>
+            </div>
+
+            {isGoogleConnected() ? (
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={notifyViaGmail}
+                  onChange={(e) => setNotifyViaGmail(e.target.checked)}
+                  className="rounded text-[#6D28D9] focus:ring-[#6D28D9] h-4 w-4"
+                />
+                <span>Send Alert</span>
+              </label>
+            ) : (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await signInWithGoogle();
+                    setNotifyViaGmail(true);
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+                className="px-2.5 py-1 text-xs font-semibold text-[#6D28D9] bg-purple-50 hover:bg-purple-100 rounded-md transition-colors cursor-pointer"
+              >
+                Connect Gmail
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modal Footer */}
@@ -305,6 +387,55 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             {submitting ? 'Recording...' : `Confirm Decision: ${decision}`}
           </button>
         </div>
+
+        {/* Mandatory User Confirmation Dialog for Sending Email via Workspace API */}
+        {showEmailConfirm && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+              <div className="flex items-center gap-2.5 text-slate-900">
+                <div className="w-8 h-8 rounded-full bg-purple-100 text-[#6D28D9] flex items-center justify-center shrink-0">
+                  <Send className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold">Confirm Sending Notification Email?</h3>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                You are about to record the decision <strong className="text-slate-900">{decision}</strong> and send an official review notification email via your connected Gmail account to:
+              </p>
+
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono space-y-1">
+                <div><span className="text-slate-400">Recipient:</span> {publication.submittedBy.firstName} {publication.submittedBy.lastName} &lt;{publication.submittedBy.email}&gt;</div>
+                <div><span className="text-slate-400">Paper:</span> {publication.title}</div>
+                <div><span className="text-slate-400">Decision:</span> {decision}</div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowEmailConfirm(false)}
+                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeDecision(false)}
+                  className="px-3 py-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md font-semibold cursor-pointer"
+                >
+                  Submit Without Email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => executeDecision(true)}
+                  className="px-3.5 py-1.5 text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  Confirm & Send Email
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Publication } from './types';
 import { authService, subscribeToAuth } from './services/auth';
 import { db, subscribeToDb } from './services/db';
+import { initGoogleAuth } from './services/googleAuth';
 
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
@@ -45,9 +46,12 @@ export default function App() {
       setPublications(db.getPublications());
     });
 
+    const unsubGoogle = initGoogleAuth();
+
     return () => {
       unsubAuth();
       unsubDb();
+      if (unsubGoogle) unsubGoogle();
     };
   }, []);
 

@@ -6,6 +6,11 @@ export const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2.5">
+            <img 
+              src="/assets/aistudio/image_c3fb1387_fb406a7b.jpg" 
+              alt="BRAIN HUB Icon" 
+              className="w-5 h-5 object-contain rounded"
+            />
             <span className="font-bold text-[#1E1B4B] tracking-tight">BRAIN HUB</span>
             <span>·</span>
             <span>Open Research Publication Management System</span>
