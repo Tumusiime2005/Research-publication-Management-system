@@ -8,7 +8,7 @@ import { Bell, BookOpen, ShieldCheck, FileText, LogOut, UserCircle, Plus, Mail }
 interface HeaderProps {
   currentView: 'public' | 'researcher' | 'admin';
   onNavigate: (view: 'public' | 'researcher' | 'admin') => void;
-  onOpenAuth: (initialMode?: 'login' | 'register' | 'bootstrap') => void;
+  onOpenAuth: (initialMode?: 'login' | 'register') => void;
   onOpenNewPublication: () => void;
   onOpenNotifications: () => void;
   onSelectPublication?: (id: string) => void;
@@ -128,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Primary Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {currentUser ? (
             <>
               {currentUser.role === 'RESEARCHER' && (
@@ -301,13 +301,6 @@ export const Header: React.FC<HeaderProps> = ({
                 className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-all shadow-sm cursor-pointer whitespace-nowrap"
               >
                 Join as Researcher
-              </button>
-              <button
-                onClick={() => onOpenAuth('bootstrap')}
-                className="hidden lg:inline-flex px-2.5 py-1.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
-                title="Bootstrap System Administrator"
-              >
-                Admin Setup
               </button>
             </div>
           )}

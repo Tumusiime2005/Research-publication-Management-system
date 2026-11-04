@@ -95,17 +95,19 @@ export const signInWithGoogle = async (): Promise<{
     const firstName = nameParts[0] || 'Researcher';
     const lastName = nameParts.slice(1).join(' ') || 'Account';
 
+    const isMainAdmin = email === 'tumusiimeeltonmarvin@gmail.com';
+
     if (!user) {
-      // Create a new real researcher account
+      // Create account (Admin if primary admin email, else Researcher)
       const newUser: StoredUser = {
-        id: generateUUID(),
-        firstName,
-        lastName,
+        id: isMainAdmin ? 'admin-maron-prime-main' : generateUUID(),
+        firstName: isMainAdmin ? 'Elton Marvin' : firstName,
+        lastName: isMainAdmin ? 'Tumusiime' : lastName,
         email,
         passwordHash: hashPassword(generateUUID() + '_google_auth'),
-        role: 'RESEARCHER',
-        institution: 'Academic Research Network',
-        department: 'Verified Google Workspace Member',
+        role: isMainAdmin ? 'ADMIN' : 'RESEARCHER',
+        institution: isMainAdmin ? 'Maron Prime Systems Institute' : 'Academic Research Network',
+        department: isMainAdmin ? 'Executive Editorial Board' : 'Verified Google Workspace Member',
         profilePhotoUrl: fbUser.photoURL || undefined,
         emailVerified: true,
         accountStatus: 'ACTIVE',
@@ -118,9 +120,13 @@ export const signInWithGoogle = async (): Promise<{
         'REGISTER_GOOGLE_ACCOUNT',
         'USER',
         user.id,
-        `Real account created via Google Workspace (${email})`
+        `Real account created via Google Workspace (${email}) with role ${user.role}`
       );
     } else {
+      if (isMainAdmin) {
+        user.role = 'ADMIN';
+        user.institution = 'Maron Prime Systems Institute';
+      }
       // Update photo or verification if needed
       if (fbUser.photoURL && !user.profilePhotoUrl) {
         user.profilePhotoUrl = fbUser.photoURL;

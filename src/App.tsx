@@ -3,6 +3,7 @@ import { User, Publication } from './types';
 import { authService, subscribeToAuth } from './services/auth';
 import { db, subscribeToDb } from './services/db';
 import { initGoogleAuth } from './services/googleAuth';
+import { initFirestoreSync, INITIAL_MAIN_ADMIN } from './services/firestoreSync';
 
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
@@ -23,7 +24,7 @@ export default function App() {
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register' | 'bootstrap'>('login');
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
 
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [editingPublication, setEditingPublication] = useState<Publication | null>(null);
@@ -38,6 +39,12 @@ export default function App() {
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
 
   useEffect(() => {
+    // 1. Initial corpus seed if storage empty
+    if (db.getPublications().length === 0) {
+      db.seedAcademicCorpus(INITIAL_MAIN_ADMIN, INITIAL_MAIN_ADMIN);
+      setPublications(db.getPublications());
+    }
+
     const unsubAuth = subscribeToAuth((u) => {
       setCurrentUser(u);
     });
@@ -46,16 +53,28 @@ export default function App() {
       setPublications(db.getPublications());
     });
 
+    // 2. Real-time Multi-Device Cloud Sync via Firestore
+    const unsubFirestore = initFirestoreSync(
+      (cloudPubs) => {
+        db.setExternalPublications(cloudPubs);
+        setPublications(db.getPublications());
+      },
+      (cloudUsers) => {
+        db.setExternalUsers(cloudUsers);
+      }
+    );
+
     const unsubGoogle = initGoogleAuth();
 
     return () => {
       unsubAuth();
       unsubDb();
+      unsubFirestore();
       if (unsubGoogle) unsubGoogle();
     };
   }, []);
 
-  const handleOpenAuth = (mode: 'login' | 'register' | 'bootstrap' = 'login') => {
+  const handleOpenAuth = (mode: 'login' | 'register' = 'login') => {
     setAuthInitialMode(mode);
     setAuthModalOpen(true);
   };
@@ -167,7 +186,7 @@ export default function App() {
             return;
           }
           if (view === 'admin' && (!currentUser || currentUser.role !== 'ADMIN')) {
-            handleOpenAuth('bootstrap');
+            handleOpenAuth('login');
             return;
           }
           setCurrentView(view);

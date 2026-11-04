@@ -115,6 +115,48 @@ export const authService = {
     return { success: true, user: sanitized };
   },
 
+  createAdminByAdmin(adminActor: User, data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    institution: string;
+    department?: string;
+  }): { success: boolean; user?: User; error?: string } {
+    if (adminActor.role !== 'ADMIN') {
+      return { success: false, error: 'Unauthorized: Only active administrators can provision new administrator accounts.' };
+    }
+
+    const existing = db.getUserByEmail(data.email);
+    if (existing) {
+      return { success: false, error: 'An account with this email address already exists.' };
+    }
+
+    if (data.password.length < 8) {
+      return { success: false, error: 'Password must be at least 8 characters long.' };
+    }
+
+    const newAdmin: StoredUser = {
+      id: generateUUID(),
+      firstName: data.firstName.trim(),
+      lastName: data.lastName.trim(),
+      email: data.email.toLowerCase().trim(),
+      passwordHash: hashPassword(data.password),
+      role: 'ADMIN',
+      institution: data.institution.trim(),
+      department: data.department ? data.department.trim() : 'Editorial Board',
+      emailVerified: true,
+      accountStatus: 'ACTIVE',
+      createdAt: new Date().toISOString()
+    };
+
+    db.saveUser(newAdmin);
+    const sanitized = sanitizeUser(newAdmin);
+    db.recordAudit(adminActor, 'PROVISION_ADMIN', 'USER', sanitized.id, `New administrator account created for ${sanitized.email}`);
+
+    return { success: true, user: sanitized };
+  },
+
   login(email: string, password: string): { success: boolean; user?: User; error?: string } {
     const user = db.getUserByEmail(email);
     if (!user) {

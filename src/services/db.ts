@@ -1,6 +1,14 @@
 import { User, StoredUser, Publication, PublicationAuthor, PublicationReview, Notification, AuditLog, Role, PublicationStatus, ReviewDecision } from '../types';
+import {
+  savePublicationToFirestore,
+  deletePublicationFromFirestore,
+  saveUserToFirestore,
+  saveNotificationToFirestore,
+  INITIAL_MAIN_ADMIN,
+  PRIMARY_ADMIN_EMAIL
+} from './firestoreSync';
 
-const STORAGE_KEY_PREFIX = 'brain_hub_v1_';
+const STORAGE_KEY_PREFIX = 'brain_hub_v2_';
 
 type Listener = () => void;
 const listeners: Set<Listener> = new Set();
@@ -62,11 +70,34 @@ export function generateUUID(): string {
   });
 }
 
+// Ensure accounts reset and primary admin is seeded
+function ensureInitializedAccounts(): void {
+  const resetFlag = 'brain_hub_reset_accounts_maron_v3';
+  if (typeof window !== 'undefined' && localStorage.getItem(resetFlag) !== 'done') {
+    // Clear all previous accounts and sessions as requested
+    localStorage.removeItem(STORAGE_KEY_PREFIX + 'users');
+    localStorage.removeItem('brain_hub_v1_users');
+    localStorage.removeItem('brain_hub_session_user');
+    
+    // Seed main admin
+    const initialUsers: StoredUser[] = [INITIAL_MAIN_ADMIN];
+    localStorage.setItem(STORAGE_KEY_PREFIX + 'users', JSON.stringify(initialUsers));
+    localStorage.setItem(resetFlag, 'done');
+    saveUserToFirestore(INITIAL_MAIN_ADMIN);
+  }
+}
+ensureInitializedAccounts();
+
 // Database Service operations
 export const db = {
   // --- USERS ---
   getUsers(): StoredUser[] {
-    return getStored<StoredUser[]>('users', []);
+    const users = getStored<StoredUser[]>('users', []);
+    if (!users.some(u => u.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase())) {
+      users.unshift(INITIAL_MAIN_ADMIN);
+      setStored('users', users);
+    }
+    return users;
   },
 
   getUserByEmail(email: string): StoredUser | undefined {
@@ -87,7 +118,19 @@ export const db = {
       users.push(user);
     }
     setStored('users', users);
+    saveUserToFirestore(user);
     return user;
+  },
+
+  setExternalUsers(cloudUsers: StoredUser[]): void {
+    const current = this.getUsers();
+    const map = new Map<string, StoredUser>();
+    current.forEach(u => map.set(u.id, u));
+    cloudUsers.forEach(u => map.set(u.id, u));
+    if (!map.has(INITIAL_MAIN_ADMIN.id)) {
+      map.set(INITIAL_MAIN_ADMIN.id, INITIAL_MAIN_ADMIN);
+    }
+    setStored('users', Array.from(map.values()));
   },
 
   // --- PUBLICATIONS ---
@@ -109,12 +152,25 @@ export const db = {
       publications.unshift(pub);
     }
     setStored('publications', publications);
+    savePublicationToFirestore(pub);
     return pub;
+  },
+
+  setExternalPublications(cloudPubs: Publication[]): void {
+    const current = this.getPublications();
+    const map = new Map<string, Publication>();
+    current.forEach(p => map.set(p.id, p));
+    cloudPubs.forEach(p => map.set(p.id, p));
+    const merged = Array.from(map.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    setStored('publications', merged);
   },
 
   deletePublication(id: string): boolean {
     const publications = this.getPublications().filter(p => p.id !== id);
     setStored('publications', publications);
+    deletePublicationFromFirestore(id);
     return true;
   },
 
@@ -134,6 +190,7 @@ export const db = {
     };
     notifications.unshift(newNotif);
     setStored('notifications', notifications);
+    saveNotificationToFirestore(newNotif);
     return newNotif;
   },
 

@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account in BRAIN HUB",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["ADMIN", "RESEARCHER"] },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "institution": { "type": "string" },
+        "status": { "type": "string", "enum": ["VERIFIED", "PENDING", "SUSPENDED"] },
+        "passwordHash": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role", "firstName", "lastName"]
+    },
+    "Publication": {
+      "title": "Publication",
+      "description": "Peer-reviewed academic research publication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "abstract": { "type": "string" },
+        "keywords": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "authorInstitution": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["SUBMITTED", "IN_REVIEW", "APPROVED", "REVISION_REQUESTED", "REJECTED"] },
+        "doi": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "version": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "downloadCount": { "type": "number" },
+        "reviewNotes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "abstract", "authorId", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "publicationId": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Registered researcher and administrator user profiles"
+    },
+    "/publications/{publicationId}": {
+      "schema": "Publication",
+      "description": "Academic publications accessible publicly when approved and managed by researchers and administrators"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications for manuscript events"
+    }
+  }
+}

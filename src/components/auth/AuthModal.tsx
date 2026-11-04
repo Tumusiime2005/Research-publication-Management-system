@@ -6,7 +6,7 @@ import { X, Lock, Mail, Building, User, KeyRound, AlertCircle, CheckCircle2 } fr
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialMode?: 'login' | 'register' | 'bootstrap';
+  initialMode?: 'login' | 'register';
   onSuccess: () => void;
 }
 
@@ -16,18 +16,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
   onSuccess,
 }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'bootstrap'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
 
   // Common fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Register / Bootstrap fields
+  // Register fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [institution, setInstitution] = useState('');
   const [department, setDepartment] = useState('');
-  const [bootstrapToken, setBootstrapToken] = useState('BH-BOOTSTRAP-SECURE-KEY-2026');
 
   // Status
   const [error, setError] = useState<string | null>(null);
@@ -86,25 +85,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setLoading(false);
           return;
         }
-      } else if (mode === 'bootstrap') {
-        if (!firstName.trim() || !lastName.trim() || !institution.trim() || !bootstrapToken.trim()) {
-          setError('All administrator profile and authorization token fields are required.');
-          setLoading(false);
-          return;
-        }
-        const res = authService.bootstrapAdmin({
-          firstName,
-          lastName,
-          email,
-          password,
-          institution,
-          bootstrapToken,
-        });
-        if (!res.success) {
-          setError(res.error || 'Administrator initialization failed');
-          setLoading(false);
-          return;
-        }
       }
 
       setLoading(false);
@@ -128,14 +108,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               className="h-7 w-auto object-contain mb-1.5"
             />
             <h3 className="text-base font-bold text-[#1E1B4B]">
-              {mode === 'login' && 'Sign In to BRAIN HUB'}
-              {mode === 'register' && 'Researcher Registration'}
-              {mode === 'bootstrap' && 'Initialize Editorial Administrator'}
+              {mode === 'login' ? 'Sign In to BRAIN HUB' : 'Researcher Registration'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              {mode === 'login' && 'Access research drafts, submissions, or review queues'}
-              {mode === 'register' && 'Submit and manage peer-reviewed academic papers'}
-              {mode === 'bootstrap' && 'Protected environment setup for first administrator'}
+              {mode === 'login'
+                ? 'Access research drafts, submissions, or review queues'
+                : 'Submit and manage peer-reviewed academic papers'}
             </p>
           </div>
           <button
@@ -155,8 +133,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {mode !== 'bootstrap' && (
-            <div className="space-y-3 pb-1">
+          <div className="space-y-3 pb-1">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
@@ -179,7 +156,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </span>
               </div>
             </div>
-          )}
 
           {mode !== 'login' && (
             <div className="grid grid-cols-2 gap-3">
@@ -290,27 +266,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </>
           )}
 
-          {mode === 'bootstrap' && (
-            <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-lg space-y-2">
-              <label className="block text-xs font-bold text-[#6D28D9]">
-                Bootstrap Secret Key (from Environment) *
-              </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 text-[#6D28D9] absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  required
-                  value={bootstrapToken}
-                  onChange={(e) => setBootstrapToken(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs font-mono border border-purple-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
-                />
-              </div>
-              <p className="text-[11px] text-slate-600">
-                Matches <code className="font-mono text-[#6D28D9]">ADMIN_BOOTSTRAP_TOKEN</code> in your backend .env file.
-              </p>
-            </div>
-          )}
-
           <div className="pt-2">
             <button
               type="submit"
@@ -321,10 +276,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 'Processing...'
               ) : mode === 'login' ? (
                 'Sign In to Account'
-              ) : mode === 'register' ? (
-                'Create Researcher Account'
               ) : (
-                'Bootstrap Administrator'
+                'Create Researcher Account'
               )}
             </button>
           </div>
@@ -332,28 +285,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* Toggle modes */}
           <div className="pt-2 border-t border-slate-100 flex flex-col gap-2 text-center text-xs text-slate-500">
             {mode === 'login' ? (
-              <>
-                <p>
-                  Don't have an account yet?{' '}
-                  <button
-                    type="button"
-                    onClick={() => { setMode('register'); setError(null); }}
-                    className="font-semibold text-[#6D28D9] hover:underline cursor-pointer"
-                  >
-                    Register as Researcher
-                  </button>
-                </p>
-                <p>
-                  Setting up system admin?{' '}
-                  <button
-                    type="button"
-                    onClick={() => { setMode('bootstrap'); setError(null); }}
-                    className="font-semibold text-slate-700 hover:underline cursor-pointer"
-                  >
-                    Bootstrap Admin
-                  </button>
-                </p>
-              </>
+              <p>
+                Don't have an account yet?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setError(null); }}
+                  className="font-semibold text-[#6D28D9] hover:underline cursor-pointer"
+                >
+                  Register as Researcher
+                </button>
+              </p>
             ) : (
               <p>
                 Already have an account?{' '}
