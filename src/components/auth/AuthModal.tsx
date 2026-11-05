@@ -62,13 +62,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
       } else if (mode === 'register') {
-        if (!firstName.trim() || !lastName.trim() || !institution.trim()) {
-          setError('Please provide all required profile fields.');
+        if (!firstName.trim() || !lastName.trim()) {
+          setError('First name and last name are required.');
           setLoading(false);
           return;
         }
-        if (password.length < 8) {
-          setError('Password must be at least 8 characters in length.');
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters in length.');
           setLoading(false);
           return;
         }
@@ -77,7 +77,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           lastName,
           email,
           password,
-          institution,
+          institution: institution.trim() || 'Independent Scholar / Researcher',
           department: department || undefined,
         });
         if (!res.success) {
@@ -193,7 +193,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Academic Email Address *
+              Email Address *
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -202,10 +202,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="researcher@university.edu"
+                placeholder="you@domain.com (Gmail, Outlook, University, etc.)"
                 className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#6D28D9] focus:border-[#6D28D9]"
               />
             </div>
+            {mode === 'register' && (
+              <p className="text-[11px] text-slate-500 mt-1">
+                Anyone with a valid email can register and receive publication status notifications.
+              </p>
+            )}
           </div>
 
           <div>
@@ -225,7 +230,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
             {mode === 'register' && (
               <p className="text-[11px] text-slate-500 mt-1">
-                Minimum 8 characters. Passwords are securely hashed with BCrypt.
+                Minimum 6 characters. Passwords are securely hashed with BCrypt.
               </p>
             )}
           </div>
@@ -234,16 +239,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Primary Institution / University *
+                  Affiliation or Institution (Optional)
                 </label>
                 <div className="relative">
                   <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
-                    required
                     value={institution}
                     onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="e.g. Oxford University / MIT"
+                    placeholder="e.g. University, Research Center, Company, or Independent"
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#6D28D9] focus:border-[#6D28D9]"
                   />
                 </div>

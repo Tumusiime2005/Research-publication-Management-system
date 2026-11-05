@@ -213,6 +213,16 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
           });
         });
 
+        // Notify submitting author
+        db.createNotification({
+          recipientUserId: currentUser.id,
+          type: 'SUBMISSION_CONFIRMED',
+          title: 'Manuscript Submitted Successfully',
+          message: `Your paper "${publicationData.title}" has been submitted and queued for editorial verification.`,
+          relatedPublicationId: pubId,
+          isRead: false,
+        });
+
         // Send submission receipt to author's device via Gmail
         if (isGoogleConnected()) {
           sendGmailNotification({

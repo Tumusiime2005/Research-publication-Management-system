@@ -61,6 +61,9 @@ export default function App() {
       },
       (cloudUsers) => {
         db.setExternalUsers(cloudUsers);
+      },
+      (cloudNotifs) => {
+        db.setExternalNotifications(cloudNotifs);
       }
     );
 
@@ -138,6 +141,16 @@ export default function App() {
         relatedPublicationId: pub.id,
         isRead: false,
       });
+    });
+
+    // Notify submitting author
+    db.createNotification({
+      recipientUserId: currentUser.id,
+      type: 'SUBMISSION_CONFIRMED',
+      title: 'Manuscript Submitted for Review',
+      message: `Your paper "${pub.title}" has been submitted and queued for editorial verification.`,
+      relatedPublicationId: pub.id,
+      isRead: false,
     });
   };
 

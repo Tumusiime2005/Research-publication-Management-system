@@ -38,6 +38,7 @@ export const INITIAL_MAIN_ADMIN: StoredUser = {
 
 let publicationsUnsub: Unsubscribe | null = null;
 let usersUnsub: Unsubscribe | null = null;
+let notificationsUnsub: Unsubscribe | null = null;
 let isInitialized = false;
 
 /**
@@ -107,7 +108,8 @@ export async function saveNotificationToFirestore(notif: Notification): Promise<
  */
 export function initFirestoreSync(
   onPublicationsUpdated: (pubs: Publication[]) => void,
-  onUsersUpdated: (users: StoredUser[]) => void
+  onUsersUpdated: (users: StoredUser[]) => void,
+  onNotificationsUpdated?: (notifs: Notification[]) => void
 ): () => void {
   if (isInitialized) {
     return () => {};
@@ -152,12 +154,34 @@ export function initFirestoreSync(
     }
   );
 
-  // 3. Ensure primary admin exists in Firestore
+  // 3. Listen to notifications collection in real-time across devices
+  const notifsCollection = collection(firestore, 'notifications');
+  notificationsUnsub = onSnapshot(
+    notifsCollection,
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const notifs: Notification[] = [];
+        snapshot.forEach((d) => {
+          notifs.push(d.data() as Notification);
+        });
+        notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (onNotificationsUpdated) {
+          onNotificationsUpdated(notifs);
+        }
+      }
+    },
+    (error) => {
+      console.warn('Firestore notifications sync warning:', error);
+    }
+  );
+
+  // 4. Ensure primary admin exists in Firestore
   ensurePrimaryAdminInFirestore();
 
   return () => {
     if (publicationsUnsub) publicationsUnsub();
     if (usersUnsub) usersUnsub();
+    if (notificationsUnsub) notificationsUnsub();
     isInitialized = false;
   };
 }

@@ -213,6 +213,17 @@ export const db = {
     setStored('notifications', notifications);
   },
 
+  setExternalNotifications(cloudNotifs: Notification[]): void {
+    const current = getStored<Notification[]>('notifications', []);
+    const map = new Map<string, Notification>();
+    current.forEach(n => map.set(n.id, n));
+    cloudNotifs.forEach(n => map.set(n.id, n));
+    const merged = Array.from(map.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    setStored('notifications', merged);
+  },
+
   // --- AUDIT LOGS ---
   getAuditLogs(): AuditLog[] {
     return getStored<AuditLog[]>('audit_logs', [])

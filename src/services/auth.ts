@@ -1,5 +1,7 @@
 import { User, StoredUser, Role } from '../types';
 import { db, hashPassword, verifyPassword, generateUUID } from './db';
+import { sendGmailNotification } from './gmail';
+import { isGoogleConnected } from './googleAuth';
 
 const SESSION_KEY = 'brain_hub_session_user';
 const EXPECTED_BOOTSTRAP_TOKEN = 'BH-BOOTSTRAP-SECURE-KEY-2026';
@@ -46,22 +48,36 @@ export const authService = {
     lastName: string;
     email: string;
     password: string;
-    institution: string;
+    institution?: string;
     department?: string;
   }): { success: boolean; user?: User; error?: string } {
-    const existing = db.getUserByEmail(data.email);
+    const cleanEmail = data.email.toLowerCase().trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return { success: false, error: 'Please provide a valid email address (e.g. yourname@domain.com).' };
+    }
+
+    if (!data.firstName.trim() || !data.lastName.trim()) {
+      return { success: false, error: 'First name and last name are required.' };
+    }
+
+    if (data.password.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters in length.' };
+    }
+
+    const existing = db.getUserByEmail(cleanEmail);
     if (existing) {
-      return { success: false, error: 'An account with this email address already exists in the system.' };
+      return { success: false, error: 'An account with this email address already exists. Please sign in instead.' };
     }
 
     const newUser: StoredUser = {
       id: generateUUID(),
       firstName: data.firstName.trim(),
       lastName: data.lastName.trim(),
-      email: data.email.toLowerCase().trim(),
+      email: cleanEmail,
       passwordHash: hashPassword(data.password),
       role: 'RESEARCHER',
-      institution: data.institution.trim(),
+      institution: data.institution?.trim() || 'Independent Scholar / Researcher',
       department: data.department ? data.department.trim() : undefined,
       emailVerified: true,
       accountStatus: 'ACTIVE',
@@ -72,6 +88,26 @@ export const authService = {
     const sanitized = sanitizeUser(newUser);
     db.recordAudit(sanitized, 'REGISTER_RESEARCHER', 'USER', sanitized.id, `Researcher ${sanitized.email} registered`);
     this.setCurrentUser(sanitized);
+
+    // Initial welcome in-app notification
+    db.createNotification({
+      recipientUserId: newUser.id,
+      type: 'ACCOUNT_WELCOME',
+      title: 'Welcome to BRAIN HUB',
+      message: 'Your researcher account is verified and ready. You will receive real-time notifications on all your manuscript submissions, peer reviews, and editorial statuses.',
+      isRead: false,
+    });
+
+    // Send welcome email if Gmail connected
+    if (isGoogleConnected()) {
+      sendGmailNotification({
+        toEmail: newUser.email,
+        recipientName: `${newUser.firstName} ${newUser.lastName}`,
+        subject: 'Welcome to BRAIN HUB Research Portal',
+        headerTitle: 'Account Verified & Ready',
+        bodyContent: `Hello ${newUser.firstName}, welcome to BRAIN HUB! Your researcher account has been activated. You can now submit research manuscripts, monitor editorial peer reviews, and receive device notifications whenever your publications change status.`
+      }).catch(console.error);
+    }
 
     return { success: true, user: sanitized };
   },
