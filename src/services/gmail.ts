@@ -1,4 +1,4 @@
-import { getGoogleAccessToken, auth } from './googleAuth';
+import { getGoogleAccessToken, getGoogleUserProfile, auth } from './googleAuth';
 
 interface SendNotificationOptions {
   toEmail: string;
@@ -54,16 +54,16 @@ export async function sendGmailNotification(options: SendNotificationOptions): P
   error?: string;
 }> {
   const accessToken = getGoogleAccessToken();
-  const currentUser = auth.currentUser;
+  const googleProfile = getGoogleUserProfile();
 
-  if (!accessToken || !currentUser) {
+  if (!accessToken) {
     return {
       success: false,
       error: 'Google Account is not currently connected. Please sign in with Google to enable device Gmail notifications.',
     };
   }
 
-  const senderEmail = currentUser.email || 'me';
+  const senderEmail = googleProfile?.email || auth.currentUser?.email || 'me';
 
   const plainText = `BRAIN HUB RESEARCH NOTIFICATION
 --------------------------------------------------
