@@ -2,7 +2,6 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
-  signInWithCredential,
   GoogleAuthProvider,
   onAuthStateChanged,
   signOut,
@@ -77,54 +76,14 @@ export const initGoogleAuth = (
 };
 
 /**
- * Ensures the Google Identity Services (GIS) client script is loaded
- */
-function ensureGsiClientLoaded(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined') {
-      resolve(false);
-      return;
-    }
-    if ((window as any).google?.accounts?.oauth2) {
-      resolve(true);
-      return;
-    }
-    const existing = document.getElementById('gsi-client-script');
-    if (existing) {
-      let checks = 0;
-      const interval = setInterval(() => {
-        checks++;
-        if ((window as any).google?.accounts?.oauth2) {
-          clearInterval(interval);
-          resolve(true);
-        } else if (checks > 20) {
-          clearInterval(interval);
-          resolve(false);
-        }
-      }, 100);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'gsi-client-script';
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.head.appendChild(script);
-  });
-}
-
-/**
- * Helper to register or sync a Google account into the BRAIN HUB database & session
+ * Registers or synchronizes a Google-authenticated account into the BRAIN HUB DB & session
  */
 function recordGoogleUserInDb(profile: GoogleUserProfile): User {
   const email = profile.email.toLowerCase().trim();
   const isMainAdmin = email === 'tumusiimeeltonmarvin@gmail.com';
 
   const firstName = profile.firstName || profile.name.split(' ')[0] || 'Researcher';
-  const lastName = profile.lastName || profile.name.split(' ').slice(1).join(' ') || 'GoogleUser';
+  const lastName = profile.lastName || profile.name.split(' ').slice(1).join(' ') || 'Account';
 
   let user = db.getUserByEmail(email);
 
@@ -188,160 +147,75 @@ function recordGoogleUserInDb(profile: GoogleUserProfile): User {
 }
 
 /**
- * Sign in or Register using Google Identity Services (GIS) token client.
- * Uses the OAuth Client ID directly, bypassing Firebase Auth domain restrictions.
- */
-function requestGsiToken(): Promise<{ token: string; profile: GoogleUserProfile }> {
-  return new Promise((resolve, reject) => {
-    try {
-      const google = (window as any).google;
-      if (!google?.accounts?.oauth2) {
-        reject(new Error('Google Identity Services SDK is not loaded.'));
-        return;
-      }
-
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: firebaseConfig.oAuthClientId,
-        scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-        prompt: 'select_account',
-        callback: async (tokenResponse: any) => {
-          if (tokenResponse.error) {
-            reject(new Error(tokenResponse.error_description || tokenResponse.error));
-            return;
-          }
-
-          const accessToken = tokenResponse.access_token;
-          if (!accessToken) {
-            reject(new Error('No access token received from Google.'));
-            return;
-          }
-
-          try {
-            // Fetch Google user profile with access token
-            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-
-            if (!res.ok) {
-              throw new Error(`Failed to retrieve Google profile: ${res.statusText}`);
-            }
-
-            const data = await res.json();
-            const profile: GoogleUserProfile = {
-              email: data.email,
-              name: data.name || data.given_name || 'Google Researcher',
-              firstName: data.given_name,
-              lastName: data.family_name,
-              picture: data.picture,
-            };
-
-            resolve({ token: accessToken, profile });
-          } catch (err: any) {
-            reject(err);
-          }
-        },
-        error_callback: (nonOAuthErr: any) => {
-          reject(new Error(nonOAuthErr?.message || 'Google Sign-in window closed or popup blocked.'));
-        },
-      });
-
-      client.requestAccessToken();
-    } catch (err: any) {
-      reject(err);
-    }
-  });
-}
-
-/**
- * Primary Google Sign-in / Registration function.
- * Uses Google Identity Services (GIS) with automatic fallback and Firebase Auth bridging.
+ * Sign in or Register a real researcher account using Google & Gmail
+ * Uses Firebase Authentication GoogleAuthProvider with Workspace scopes
  */
 export const signInWithGoogle = async (): Promise<{
   user: User;
-  firebaseUser?: FirebaseUser | null;
+  firebaseUser: FirebaseUser;
   accessToken: string;
 }> => {
   isSigningIn = true;
   try {
-    // 1. Try Google Identity Services (GIS) first as it avoids Firebase Auth domain whitelist constraints
-    const gsiLoaded = await ensureGsiClientLoaded();
-    if (gsiLoaded && (window as any).google?.accounts?.oauth2) {
-      try {
-        const { token, profile } = await requestGsiToken();
-        cachedAccessToken = token;
-        cachedGoogleProfile = profile;
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken || 'firebase_google_session';
 
-        const safeUser = recordGoogleUserInDb(profile);
+    cachedAccessToken = token;
+    const fbUser = result.user;
+    const email = fbUser.email?.toLowerCase().trim() || '';
 
-        // Optionally bridge to Firebase Auth if credential can be linked (silent fallback if unauthorized domain)
-        let fbUser: FirebaseUser | null = null;
-        try {
-          const cred = GoogleAuthProvider.credential(null, token);
-          const userCred = await signInWithCredential(auth, cred);
-          fbUser = userCred.user;
-        } catch (fbErr: any) {
-          // Log benign domain or config warning without interrupting the user's login
-          console.info('Firebase Auth domain linking skipped; Google OAuth token active.', fbErr?.code || fbErr?.message);
-        }
+    const displayName = fbUser.displayName || 'Researcher';
+    const nameParts = displayName.split(' ');
+    const firstName = nameParts[0] || 'Researcher';
+    const lastName = nameParts.slice(1).join(' ') || 'Account';
 
-        notifyGoogleAuth(true, fbUser);
-        return {
-          user: safeUser,
-          firebaseUser: fbUser,
-          accessToken: token,
-        };
-      } catch (gsiErr: any) {
-        console.warn('GIS Token client completed with notice:', gsiErr?.message);
-        // If user cancelled, rethrow so UI can handle it cleanly
-        if (gsiErr?.message?.includes('closed') || gsiErr?.message?.includes('cancelled')) {
-          throw new Error('Google sign-in popup was closed before completing.');
-        }
-        // If GIS had another error, fall through to try Firebase popup
-      }
+    const profile: GoogleUserProfile = {
+      email,
+      name: displayName,
+      firstName,
+      lastName,
+      picture: fbUser.photoURL || undefined,
+    };
+    cachedGoogleProfile = profile;
+
+    const safeUser = recordGoogleUserInDb(profile);
+    notifyGoogleAuth(true, fbUser);
+
+    return {
+      user: safeUser,
+      firebaseUser: fbUser,
+      accessToken: token,
+    };
+  } catch (error: any) {
+    const code = error?.code || '';
+    const msg = error?.message || '';
+
+    if (code === 'auth/unauthorized-domain') {
+      throw new Error(
+        'Google OAuth Domain Notice: This hosting domain is waiting for authorization in the Google Cloud / Firebase Console. You can create your account immediately using the email registration form below!'
+      );
+    }
+    if (code === 'auth/popup-blocked') {
+      throw new Error(
+        'The Google sign-in popup was blocked by your browser. Please allow popups or register directly with your email below.'
+      );
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      throw new Error('Google sign-in window was closed before completion.');
+    }
+    if (code === 'auth/operation-not-allowed') {
+      throw new Error(
+        'Google sign-in provider is not enabled in Firebase Console. You can register directly with your email below.'
+      );
+    }
+    if (msg.includes('origin_mismatch') || code === '400') {
+      throw new Error(
+        'Google OAuth Origin Mismatch: This web address is not yet registered in Google Cloud Console OAuth Authorized Origins. Please use the direct email registration form below to create your account instantly!'
+      );
     }
 
-    // 2. Fallback to Firebase Auth popup
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential?.accessToken || '';
-      cachedAccessToken = token || 'firebase_authenticated_session';
-
-      const fbUser = result.user;
-      const profile: GoogleUserProfile = {
-        email: fbUser.email || '',
-        name: fbUser.displayName || 'Google Researcher',
-        picture: fbUser.photoURL || undefined,
-      };
-      cachedGoogleProfile = profile;
-
-      const safeUser = recordGoogleUserInDb(profile);
-      notifyGoogleAuth(true, fbUser);
-
-      return {
-        user: safeUser,
-        firebaseUser: fbUser,
-        accessToken: cachedAccessToken,
-      };
-    } catch (fbErr: any) {
-      const code = fbErr?.code || '';
-      if (code === 'auth/unauthorized-domain') {
-        throw new Error(
-          'Google Sign-In Domain Note: This preview domain is waiting for Firebase Auth domain whitelist. You can register instantly using the email form below with your Google address.'
-        );
-      } else if (code === 'auth/popup-blocked') {
-        throw new Error(
-          'Google sign-in popup was blocked by your browser. Please allow popups or register directly with your email below.'
-        );
-      } else if (code === 'auth/popup-closed-by-user') {
-        throw new Error('Google sign-in window was closed.');
-      } else if (code === 'auth/operation-not-allowed') {
-        throw new Error(
-          'Google authentication provider is not configured in Firebase console. Please register with your email address below.'
-        );
-      }
-      throw new Error(fbErr?.message || 'Google authentication failed.');
-    }
+    throw new Error(error?.message || 'Google authentication failed.');
   } finally {
     isSigningIn = false;
   }
