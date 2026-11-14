@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Publication } from './types';
 import { authService, subscribeToAuth } from './services/auth';
 import { db, subscribeToDb } from './services/db';
-import { initGoogleAuth } from './services/googleAuth';
-import { initFirestoreSync, INITIAL_MAIN_ADMIN } from './services/firestoreSync';
+import { initFirestoreSync } from './services/firestoreSync';
+import { triggerDeviceNotification } from './services/deviceNotifications';
 
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
@@ -11,16 +11,17 @@ import { PublicCatalog } from './components/public/PublicCatalog';
 import { PublicationDetailModal } from './components/public/PublicationDetailModal';
 import { ResearcherDashboard } from './components/researcher/ResearcherDashboard';
 import { PublicationFormModal } from './components/researcher/PublicationFormModal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { ReviewModal } from './components/admin/ReviewModal';
-import { AuditLogViewerModal } from './components/admin/AuditLogViewerModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
+import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [publications, setPublications] = useState<Publication[]>(db.getPublications());
-  const [currentView, setCurrentView] = useState<'public' | 'researcher' | 'admin'>('public');
+  const [currentView, setCurrentView] = useState<'public' | 'researcher'>('public');
+
+  // Track notified IDs so incoming Firestore alerts trigger device notifications once
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -32,48 +33,55 @@ export default function App() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(null);
 
-  const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewingPublication, setReviewingPublication] = useState<Publication | null>(null);
-
-  const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
 
   useEffect(() => {
-    // 1. Initial corpus seed if storage empty
-    if (db.getPublications().length === 0) {
-      db.seedAcademicCorpus(INITIAL_MAIN_ADMIN, INITIAL_MAIN_ADMIN);
-      setPublications(db.getPublications());
+    // Seed initial notifications seen set
+    if (currentUser) {
+      db.getNotifications(currentUser.id).forEach(n => seenNotifIdsRef.current.add(n.id));
     }
 
     const unsubAuth = subscribeToAuth((u) => {
       setCurrentUser(u);
+      if (!u && currentView === 'researcher') {
+        setCurrentView('public');
+      }
     });
 
     const unsubDb = subscribeToDb(() => {
       setPublications(db.getPublications());
     });
 
-    // 2. Real-time Multi-Device Cloud Sync via Firestore
+    // Real-time Cloud Sync via Firestore (linked directly with the separate Admin Dashboard)
     const unsubFirestore = initFirestoreSync(
-      (cloudPubs) => {
-        db.setExternalPublications(cloudPubs);
+      (cloudPubs, authoritative) => {
+        db.setExternalPublications(cloudPubs, authoritative);
         setPublications(db.getPublications());
       },
-      (cloudUsers) => {
-        db.setExternalUsers(cloudUsers);
+      (cloudUsers, authoritative) => {
+        db.setExternalUsers(cloudUsers, authoritative);
+        authService.syncActiveSessionsWithDb();
       },
-      (cloudNotifs) => {
-        db.setExternalNotifications(cloudNotifs);
+      (cloudNotifs, authoritative) => {
+        db.setExternalNotifications(cloudNotifs, authoritative);
+        const activeUser = authService.getCurrentUser();
+        if (activeUser) {
+          cloudNotifs
+            .filter(n => n.recipientUserId === activeUser.id && !n.isRead)
+            .forEach(n => {
+              if (!seenNotifIdsRef.current.has(n.id)) {
+                seenNotifIdsRef.current.add(n.id);
+                triggerDeviceNotification(n.title, n.message);
+              }
+            });
+        }
       }
     );
-
-    const unsubGoogle = initGoogleAuth();
 
     return () => {
       unsubAuth();
       unsubDb();
       unsubFirestore();
-      if (unsubGoogle) unsubGoogle();
     };
   }, []);
 
@@ -109,96 +117,53 @@ export default function App() {
     }
   };
 
-  const handleReviewPublication = (pub: Publication) => {
-    setReviewingPublication(pub);
-    setReviewModalOpen(true);
-  };
-
-  const handleSubmitDraft = (pub: Publication) => {
-    if (!currentUser) return;
+  const handlePublishDraft = (pub: Publication) => {
+    if (!currentUser || currentUser.accountStatus !== 'ACTIVE') return;
+    const now = new Date().toISOString();
     const updated: Publication = {
       ...pub,
-      status: 'SUBMITTED',
-      updatedAt: new Date().toISOString(),
+      status: 'APPROVED',
+      publishedAt: pub.publishedAt || now,
+      updatedAt: now,
     };
     db.savePublication(updated);
     db.recordAudit(
       currentUser,
-      'SUBMIT_PUBLICATION',
+      'PUBLISH_PUBLICATION',
       'PUBLICATION',
       pub.id,
-      `Submitted: ${pub.title}`
+      `Published under domain "${pub.researchArea}": ${pub.title}`
     );
 
-    // Notify admins
     const admins = db.getUsers().filter(u => u.role === 'ADMIN');
     admins.forEach(admin => {
       db.createNotification({
         recipientUserId: admin.id,
-        type: 'NEW_SUBMISSION',
-        title: 'New Research Paper Submitted',
-        message: `Researcher ${currentUser.firstName} ${currentUser.lastName} submitted "${pub.title}" for review.`,
+        type: 'NEW_PUBLICATION',
+        title: 'New Research Paper Published',
+        message: `${currentUser.firstName} ${currentUser.lastName} published "${pub.title}" under category "${pub.researchArea}".`,
         relatedPublicationId: pub.id,
         isRead: false,
       });
     });
 
-    // Notify submitting author
     db.createNotification({
       recipientUserId: currentUser.id,
-      type: 'SUBMISSION_CONFIRMED',
-      title: 'Manuscript Submitted for Review',
-      message: `Your paper "${pub.title}" has been submitted and queued for editorial verification.`,
+      type: 'PUBLICATION_LIVE',
+      title: 'Paper Published to Repository',
+      message: `Your paper "${pub.title}" is now live under the "${pub.researchArea}" category.`,
       relatedPublicationId: pub.id,
       isRead: false,
     });
   };
 
-  const handleSeedCorpus = () => {
-    // If no user exists, create researcher and admin first
-    let researcher = currentUser;
-    if (!researcher || researcher.role !== 'RESEARCHER') {
-      const regRes = authService.registerResearcher({
-        firstName: 'Elena',
-        lastName: 'Rostova',
-        email: 'elena.rostova@oxford.ac.uk',
-        password: 'Password2026!',
-        institution: 'University of Oxford',
-        department: 'Computational Neuroscience',
-      });
-      if (regRes.user) researcher = regRes.user;
-    }
-
-    let admin = db.getUsers().find(u => u.role === 'ADMIN');
-    if (!admin) {
-      const bRes = authService.bootstrapAdmin({
-        firstName: 'Marcus',
-        lastName: 'Vance',
-        email: 'editor.in.chief@brainhub.academic',
-        password: 'AdminPassword2026!',
-        institution: 'Global Academic Review Board',
-        bootstrapToken: 'BH-BOOTSTRAP-SECURE-KEY-2026',
-      });
-      if (bRes.user) admin = bRes.user as any;
-    }
-
-    if (researcher && admin) {
-      db.seedAcademicCorpus(researcher, admin as any);
-      setPublications(db.getPublications());
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#1E1B4B]">
-      {/* Top Bar Contract Navigation */}
+      {/* User Portal Top Navigation */}
       <Header
         currentView={currentView}
         onNavigate={(view) => {
-          if (view === 'researcher' && (!currentUser || currentUser.role !== 'RESEARCHER')) {
-            handleOpenAuth('login');
-            return;
-          }
-          if (view === 'admin' && (!currentUser || currentUser.role !== 'ADMIN')) {
+          if (view === 'researcher' && !currentUser) {
             handleOpenAuth('login');
             return;
           }
@@ -209,13 +174,12 @@ export default function App() {
         onOpenNotifications={() => setNotificationDrawerOpen(true)}
       />
 
-      {/* Main View Router */}
+      {/* Main User View Router */}
       <main className="flex-1">
         {currentView === 'public' && (
           <PublicCatalog
             publications={publications}
             onSelectPublication={handleViewPublication}
-            onOpenSeedCorpus={handleSeedCorpus}
           />
         )}
 
@@ -226,16 +190,7 @@ export default function App() {
             onOpenCreate={handleOpenNewPublication}
             onEditPublication={handleEditPublication}
             onViewPublication={handleViewPublication}
-            onSubmitPublication={handleSubmitDraft}
-          />
-        )}
-
-        {currentView === 'admin' && currentUser && currentUser.role === 'ADMIN' && (
-          <AdminDashboard
-            currentUser={currentUser}
-            publications={publications}
-            onReviewPublication={handleReviewPublication}
-            onViewAuditLogs={() => setAuditModalOpen(true)}
+            onPublishDraft={handlePublishDraft}
           />
         )}
       </main>
@@ -250,8 +205,7 @@ export default function App() {
         onClose={() => setAuthModalOpen(false)}
         onSuccess={() => {
           const u = authService.getCurrentUser();
-          if (u?.role === 'RESEARCHER') setCurrentView('researcher');
-          if (u?.role === 'ADMIN') setCurrentView('admin');
+          if (u) setCurrentView('researcher');
         }}
       />
 
@@ -278,31 +232,14 @@ export default function App() {
         }}
       />
 
-      {currentUser && currentUser.role === 'ADMIN' && (
-        <ReviewModal
-          publication={reviewingPublication}
-          currentUser={currentUser}
-          onClose={() => {
-            setReviewModalOpen(false);
-            setReviewingPublication(null);
-          }}
-          onSuccess={() => {
-            setPublications(db.getPublications());
-          }}
-        />
-      )}
-
-      <AuditLogViewerModal
-        isOpen={auditModalOpen}
-        onClose={() => setAuditModalOpen(false)}
-      />
-
       <NotificationDrawer
         isOpen={notificationDrawerOpen}
         currentUser={currentUser}
         onClose={() => setNotificationDrawerOpen(false)}
         onSelectPublication={handleSelectById}
       />
+
+      <OfflineIndicator />
     </div>
   );
 }

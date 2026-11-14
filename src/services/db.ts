@@ -1,12 +1,16 @@
-import { User, StoredUser, Publication, PublicationAuthor, PublicationReview, Notification, AuditLog, Role, PublicationStatus, ReviewDecision } from '../types';
+import { User, StoredUser, Publication, Notification, AuditLog } from '../types';
 import {
   savePublicationToFirestore,
   deletePublicationFromFirestore,
   saveUserToFirestore,
+  deleteUserFromFirestore,
   saveNotificationToFirestore,
   INITIAL_MAIN_ADMIN,
-  PRIMARY_ADMIN_EMAIL
+  PRIMARY_ADMIN_EMAIL,
 } from './firestoreSync';
+import { hashPassword, verifyPassword, generateUUID, normalizeDomainName } from './utils';
+
+export { hashPassword, verifyPassword, generateUUID, normalizeDomainName };
 
 const STORAGE_KEY_PREFIX = 'brain_hub_v2_';
 
@@ -43,52 +47,24 @@ function setStored<T>(key: string, value: T): void {
   }
 }
 
-// Pseudo-BCrypt hash simulation for browser environment (produces non-reversible salted token)
-export function hashPassword(password: string): string {
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return `$2a$12$BH.${Math.abs(hash).toString(16).padStart(12, '0')}.${btoa(password.slice(0, 3)).replace(/=/g, '')}`;
-}
-
-export function verifyPassword(password: string, storedHash: string): boolean {
-  return hashPassword(password) === storedHash;
-}
-
-// UUID generator
-export function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-// Ensure accounts reset and primary admin is seeded
+// Ensure all local accounts & admin password are reset on v4 upgrade
 function ensureInitializedAccounts(): void {
-  const resetFlag = 'brain_hub_reset_accounts_maron_v3';
+  const resetFlag = 'brain_hub_reset_accounts_maron_v4';
   if (typeof window !== 'undefined' && localStorage.getItem(resetFlag) !== 'done') {
-    // Clear all previous accounts and sessions as requested
     localStorage.removeItem(STORAGE_KEY_PREFIX + 'users');
+    localStorage.removeItem(STORAGE_KEY_PREFIX + 'notifications');
+    localStorage.removeItem(STORAGE_KEY_PREFIX + 'audit_logs');
     localStorage.removeItem('brain_hub_v1_users');
     localStorage.removeItem('brain_hub_session_user');
-    
-    // Seed main admin
+    localStorage.removeItem('brain_hub_admin_session');
+
     const initialUsers: StoredUser[] = [INITIAL_MAIN_ADMIN];
     localStorage.setItem(STORAGE_KEY_PREFIX + 'users', JSON.stringify(initialUsers));
     localStorage.setItem(resetFlag, 'done');
-    saveUserToFirestore(INITIAL_MAIN_ADMIN);
   }
 }
 ensureInitializedAccounts();
 
-// Database Service operations
 export const db = {
   // --- USERS ---
   getUsers(): StoredUser[] {
@@ -122,10 +98,19 @@ export const db = {
     return user;
   },
 
-  setExternalUsers(cloudUsers: StoredUser[]): void {
-    const current = this.getUsers();
+  deleteUser(id: string): boolean {
+    if (id === INITIAL_MAIN_ADMIN.id) return false;
+    const users = this.getUsers().filter(u => u.id !== id);
+    setStored('users', users);
+    deleteUserFromFirestore(id);
+    return true;
+  },
+
+  setExternalUsers(cloudUsers: StoredUser[], authoritative = false): void {
     const map = new Map<string, StoredUser>();
-    current.forEach(u => map.set(u.id, u));
+    if (!authoritative) {
+      this.getUsers().forEach(u => map.set(u.id, u));
+    }
     cloudUsers.forEach(u => map.set(u.id, u));
     if (!map.has(INITIAL_MAIN_ADMIN.id)) {
       map.set(INITIAL_MAIN_ADMIN.id, INITIAL_MAIN_ADMIN);
@@ -156,10 +141,11 @@ export const db = {
     return pub;
   },
 
-  setExternalPublications(cloudPubs: Publication[]): void {
-    const current = this.getPublications();
+  setExternalPublications(cloudPubs: Publication[], authoritative = false): void {
     const map = new Map<string, Publication>();
-    current.forEach(p => map.set(p.id, p));
+    if (!authoritative) {
+      this.getPublications().forEach(p => map.set(p.id, p));
+    }
     cloudPubs.forEach(p => map.set(p.id, p));
     const merged = Array.from(map.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -186,7 +172,7 @@ export const db = {
     const newNotif: Notification = {
       ...notif,
       id: generateUUID(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     notifications.unshift(newNotif);
     setStored('notifications', notifications);
@@ -200,23 +186,26 @@ export const db = {
     if (item) {
       item.isRead = true;
       setStored('notifications', notifications);
+      saveNotificationToFirestore(item);
     }
   },
 
   markAllNotificationsRead(userId: string): void {
     const notifications = getStored<Notification[]>('notifications', []);
     notifications.forEach(n => {
-      if (n.recipientUserId === userId) {
+      if (n.recipientUserId === userId && !n.isRead) {
         n.isRead = true;
+        saveNotificationToFirestore(n);
       }
     });
     setStored('notifications', notifications);
   },
 
-  setExternalNotifications(cloudNotifs: Notification[]): void {
-    const current = getStored<Notification[]>('notifications', []);
+  setExternalNotifications(cloudNotifs: Notification[], authoritative = false): void {
     const map = new Map<string, Notification>();
-    current.forEach(n => map.set(n.id, n));
+    if (!authoritative) {
+      getStored<Notification[]>('notifications', []).forEach(n => map.set(n.id, n));
+    }
     cloudNotifs.forEach(n => map.set(n.id, n));
     const merged = Array.from(map.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -226,8 +215,9 @@ export const db = {
 
   // --- AUDIT LOGS ---
   getAuditLogs(): AuditLog[] {
-    return getStored<AuditLog[]>('audit_logs', [])
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return getStored<AuditLog[]>('audit_logs', []).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   },
 
   recordAudit(actor: User | null, action: string, entityType: string, entityId?: string, metadata?: string): void {
@@ -240,138 +230,10 @@ export const db = {
       entityType,
       entityId,
       metadata,
-      ipAddress: '127.0.0.1 (AI Studio Sandbox)',
-      createdAt: new Date().toISOString()
+      ipAddress: 'Cloud Sync',
+      createdAt: new Date().toISOString(),
     };
     logs.unshift(newLog);
-    setStored('audit_logs', logs.slice(0, 100)); // retain last 100 entries
+    setStored('audit_logs', logs.slice(0, 150));
   },
-
-  // Database Reset / Clear
-  clearDatabase(): void {
-    localStorage.removeItem(STORAGE_KEY_PREFIX + 'users');
-    localStorage.removeItem(STORAGE_KEY_PREFIX + 'publications');
-    localStorage.removeItem(STORAGE_KEY_PREFIX + 'notifications');
-    localStorage.removeItem(STORAGE_KEY_PREFIX + 'audit_logs');
-    notifyListeners();
-  },
-
-  // Optional Academic Seed for Quick Evaluation
-  seedAcademicCorpus(authorUser: User, adminUser: User): void {
-    const now = new Date();
-    const samplePubs: Publication[] = [
-      {
-        id: generateUUID(),
-        title: 'Asymptotic Error Bounds in High-Dimensional Tensor Decomposition for Neural Representation',
-        abstractText: 'We present a closed-form derivation of asymptotic error bounds for rank-constrained tensor decompositions applied to continuous neural representations. By formulating Riemannian gradient optimization over the Stiefel manifold, we establish non-convex convergence rates under realistic signal-to-noise ratios, validated on multi-modal neuroimaging datasets.',
-        researchArea: 'Computational Neuroscience',
-        keywords: 'tensor decomposition, Riemannian geometry, neural manifolds, non-convex optimization',
-        status: 'APPROVED',
-        documentOriginalName: 'asymptotic_tensor_bounds_final.pdf',
-        documentSize: 2450120,
-        documentMimeType: 'application/pdf',
-        documentUrl: '#sample-doc-1',
-        submittedBy: authorUser,
-        publishedAt: new Date(now.getTime() - 86400000 * 3).toISOString(),
-        createdAt: new Date(now.getTime() - 86400000 * 7).toISOString(),
-        updatedAt: new Date(now.getTime() - 86400000 * 3).toISOString(),
-        authors: [
-          {
-            id: generateUUID(),
-            publicationId: '',
-            authorName: `${authorUser.firstName} ${authorUser.lastName}`,
-            authorEmail: authorUser.email,
-            authorOrder: 1,
-            isRegisteredUser: true
-          },
-          {
-            id: generateUUID(),
-            publicationId: '',
-            authorName: 'Dr. Elena Rostova',
-            authorEmail: 'elena.rostova@oxford.ac.uk',
-            authorOrder: 2,
-            isRegisteredUser: false
-          }
-        ],
-        reviews: [
-          {
-            id: generateUUID(),
-            publicationId: '',
-            reviewerId: adminUser.id,
-            reviewerName: `${adminUser.firstName} ${adminUser.lastName}`,
-            decision: 'APPROVED',
-            verificationNotes: 'Rigorous theoretical proofs verified by the editorial committee. Convergence theorems are sound and experimental methodology aligns with IEEE standards.',
-            createdAt: new Date(now.getTime() - 86400000 * 3).toISOString()
-          }
-        ]
-      },
-      {
-        id: generateUUID(),
-        title: 'Provably Robust Consensus in Asynchronous Byzantine Networks Under Byzantine Fault Tolerance Constraints',
-        abstractText: 'Consensus mechanisms in high-throughput distributed ledgers suffer from latency inflation in adversarial network partitions. We propose a randomized quorum-intersection algorithm that attains optimal message complexity O(n log n) while tolerating up to 33% malicious Byzantine nodes without relying on trusted execution environments.',
-        researchArea: 'Distributed Systems',
-        keywords: 'byzantine consensus, asynchronous networks, quorum intersection, fault tolerance',
-        status: 'APPROVED',
-        documentOriginalName: 'robust_byzantine_consensus.pdf',
-        documentSize: 1845100,
-        documentMimeType: 'application/pdf',
-        documentUrl: '#sample-doc-2',
-        submittedBy: authorUser,
-        publishedAt: new Date(now.getTime() - 86400000 * 1).toISOString(),
-        createdAt: new Date(now.getTime() - 86400000 * 4).toISOString(),
-        updatedAt: new Date(now.getTime() - 86400000 * 1).toISOString(),
-        authors: [
-          {
-            id: generateUUID(),
-            publicationId: '',
-            authorName: `${authorUser.firstName} ${authorUser.lastName}`,
-            authorEmail: authorUser.email,
-            authorOrder: 1,
-            isRegisteredUser: true
-          }
-        ],
-        reviews: [
-          {
-            id: generateUUID(),
-            publicationId: '',
-            reviewerId: adminUser.id,
-            reviewerName: `${adminUser.firstName} ${adminUser.lastName}`,
-            decision: 'APPROVED',
-            verificationNotes: 'Methodology thoroughly reviewed. Formal safety and liveness invariants satisfied under asynchronous adversary models.',
-            createdAt: new Date(now.getTime() - 86400000 * 1).toISOString()
-          }
-        ]
-      },
-      {
-        id: generateUUID(),
-        title: 'Scalable Epigenetic Profiling of MicroRNA Biomarkers for Early-Stage Oncology Detection',
-        abstractText: 'Early diagnosis of solid tumors hinges on non-invasive quantification of circulating microRNA clusters. Here we demonstrate a microfluidic fluorometric array delivering femtomolar sensitivity for 12 diagnostic biomarkers across 400 patient cohort samples.',
-        researchArea: 'Biomedical Informatics',
-        keywords: 'epigenetics, microRNA, oncology, microfluidics, biomarker assay',
-        status: 'SUBMITTED',
-        documentOriginalName: 'epigenetic_profiling_draft.pdf',
-        documentSize: 3120000,
-        documentMimeType: 'application/pdf',
-        documentUrl: '#sample-doc-3',
-        submittedBy: authorUser,
-        createdAt: new Date(now.getTime() - 86400000 * 2).toISOString(),
-        updatedAt: new Date(now.getTime() - 86400000 * 2).toISOString(),
-        authors: [
-          {
-            id: generateUUID(),
-            publicationId: '',
-            authorName: `${authorUser.firstName} ${authorUser.lastName}`,
-            authorEmail: authorUser.email,
-            authorOrder: 1,
-            isRegisteredUser: true
-          }
-        ],
-        reviews: []
-      }
-    ];
-
-    setStored('publications', samplePubs);
-    this.recordAudit(adminUser, 'SEED_ACADEMIC_CORPUS', 'SYSTEM', undefined, 'Sample peer-reviewed publications loaded for evaluation');
-    notifyListeners();
-  }
 };

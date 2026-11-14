@@ -2,22 +2,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow public read for publications so they are visible online across all devices
+    // Publications collection: public read & researcher/admin writes
     match /publications/{publicationId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, create, update, delete: if true;
     }
 
-    // User accounts collection
+    // User accounts collection (synced between User App and Separate Admin Dashboard)
     match /users/{userId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, create, update, delete: if true;
     }
 
-    // Notifications
+    // Notifications collection
     match /notifications/{notificationId} {
-      allow read: if true;
-      allow create, update, delete: if true;
+      allow read, create, update, delete: if true;
+    }
+
+    // System state & one-time reset markers
+    match /system/{docId} {
+      allow read, write: if true;
     }
 
     // Test connection doc

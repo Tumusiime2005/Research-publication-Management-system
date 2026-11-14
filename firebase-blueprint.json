@@ -74,7 +74,11 @@
     },
     "/notifications/{notificationId}": {
       "schema": "Notification",
-      "description": "User notifications for manuscript events"
+      "description": "User notifications for account verification and publication events"
+    },
+    "/system/{docId}": {
+      "schema": "Notification",
+      "description": "System initialization and migration state markers"
     }
   }
 }

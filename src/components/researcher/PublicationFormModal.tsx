@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Publication, User, PublicationAuthor } from '../../types';
-import { db, generateUUID } from '../../services/db';
-import { sendGmailNotification } from '../../services/gmail';
-import { isGoogleConnected } from '../../services/googleAuth';
-import { X, Plus, Trash2, Upload, FileText, AlertCircle, CheckCircle2, Mail, Send } from 'lucide-react';
+import { db, generateUUID, normalizeDomainName } from '../../services/db';
+import { getDocumentFormatLabel, inferDocumentMimeType, isDangerousExecutable } from '../../services/utils';
+import { triggerDeviceNotification } from '../../services/deviceNotifications';
+import { X, Plus, Trash2, Upload, AlertCircle, ShieldAlert, Tag } from 'lucide-react';
 
 interface PublicationFormModalProps {
   isOpen: boolean;
@@ -12,6 +12,16 @@ interface PublicationFormModalProps {
   editPublication?: Publication | null;
   onSuccess: () => void;
 }
+
+const DEFAULT_SUGGESTED_DOMAINS = [
+  'Distributional Systems',
+  'Computational Neuroscience',
+  'Computer Science & AI',
+  'Biomedical Informatics',
+  'Quantum Information Science',
+  'Applied Mathematics',
+  'Environmental Engineering',
+];
 
 export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
   isOpen,
@@ -22,21 +32,31 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
 }) => {
   const [title, setTitle] = useState('');
   const [abstractText, setAbstractText] = useState('');
-  const [researchArea, setResearchArea] = useState('Computer Science & AI');
+  const [researchArea, setResearchArea] = useState('');
   const [keywords, setKeywords] = useState('');
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
   // Authors
   const [authors, setAuthors] = useState<Array<{ name: string; email: string; order: number; isUser: boolean }>>([]);
 
   // File upload state
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
   const [existingFileName, setExistingFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | undefined>(undefined);
+  const [fileMimeType, setFileMimeType] = useState<string | undefined>(undefined);
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const isAccountVerified = currentUser.accountStatus === 'ACTIVE';
+
+  // Collect all active domains from existing publications + defaults for instant suggestions
+  const suggestedDomains = useMemo(() => {
+    const existing = db
+      .getPublications()
+      .map((p) => p.researchArea?.trim())
+      .filter(Boolean);
+    return Array.from(new Set([...existing, ...DEFAULT_SUGGESTED_DOMAINS]));
+  }, [isOpen]);
 
   useEffect(() => {
     if (editPublication) {
@@ -46,6 +66,7 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
       setKeywords(editPublication.keywords);
       setExistingFileName(editPublication.documentOriginalName || null);
       setFileSize(editPublication.documentSize);
+      setFileMimeType(editPublication.documentMimeType);
       setFileBase64(editPublication.documentData || null);
       setAuthors(
         editPublication.authors.map(a => ({
@@ -56,14 +77,14 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
         }))
       );
     } else {
-      // Default to current researcher as primary author
       setTitle('');
       setAbstractText('');
-      setResearchArea('Computer Science & AI');
+      setResearchArea('');
       setKeywords('');
-      setSelectedFile(null);
       setFileBase64(null);
       setExistingFileName(null);
+      setFileSize(undefined);
+      setFileMimeType(undefined);
       setAuthors([
         {
           name: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -106,8 +127,8 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Only PDF documents (.pdf) are accepted for publication submissions.');
+    if (isDangerousExecutable(file.name)) {
+      setError('Executable or system script files are not allowed. Please upload a document file (e.g. PDF, DOCX, PPTX, TXT, ODT).');
       return;
     }
 
@@ -116,12 +137,11 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
       return;
     }
 
-    setSelectedFile(file);
     setExistingFileName(file.name);
     setFileSize(file.size);
+    setFileMimeType(inferDocumentMimeType(file.name, file.type));
     setError(null);
 
-    // Read as Base64 for persistent browser preview/download
     const reader = new FileReader();
     reader.onload = () => {
       setFileBase64(reader.result as string);
@@ -129,16 +149,26 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (actionType: 'DRAFT' | 'SUBMIT') => {
+  const handleSubmit = (actionType: 'DRAFT' | 'PUBLISH') => {
     setError(null);
+
+    if (actionType === 'PUBLISH' && !isAccountVerified) {
+      setError('Your researcher account is awaiting verification from the Administrator Dashboard. Save as Draft now, and publish once verified.');
+      return;
+    }
 
     if (title.trim().length < 5) {
       setError('Publication title must be at least 5 characters in length.');
       return;
     }
 
+    if (researchArea.trim().length < 2) {
+      setError('Please enter a research domain (e.g., Distributional Systems or Computational Neuroscience).');
+      return;
+    }
+
     if (abstractText.trim().length < 20) {
-      setError('Abstract must be at least 20 characters in length to enable peer review.');
+      setError('Abstract must be at least 20 characters in length.');
       return;
     }
 
@@ -159,6 +189,7 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
     try {
       const pubId = editPublication ? editPublication.id : generateUUID();
       const now = new Date().toISOString();
+      const normalizedDomain = normalizeDomainName(researchArea);
 
       const publicationAuthors: PublicationAuthor[] = authors.map((a) => ({
         id: generateUUID(),
@@ -169,20 +200,23 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
         isRegisteredUser: a.isUser,
       }));
 
-      const newStatus = actionType === 'SUBMIT' ? 'SUBMITTED' : 'DRAFT';
+      const newStatus = actionType === 'PUBLISH' ? 'APPROVED' : 'DRAFT';
 
       const publicationData: Publication = {
         id: pubId,
         title: title.trim(),
         abstractText: abstractText.trim(),
-        researchArea: researchArea.trim(),
+        researchArea: normalizedDomain,
         keywords: keywords.trim(),
         documentOriginalName: existingFileName || undefined,
         documentSize: fileSize,
-        documentMimeType: existingFileName ? 'application/pdf' : undefined,
+        documentMimeType: existingFileName
+          ? fileMimeType || inferDocumentMimeType(existingFileName)
+          : undefined,
         documentData: fileBase64 || undefined,
         status: newStatus,
         submittedBy: currentUser,
+        publishedAt: actionType === 'PUBLISH' ? (editPublication?.publishedAt || now) : undefined,
         createdAt: editPublication ? editPublication.createdAt : now,
         updatedAt: now,
         authors: publicationAuthors,
@@ -191,23 +225,23 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
 
       db.savePublication(publicationData);
 
-      if (actionType === 'SUBMIT') {
+      if (actionType === 'PUBLISH') {
         db.recordAudit(
           currentUser,
-          'SUBMIT_PUBLICATION',
+          'PUBLISH_PUBLICATION',
           'PUBLICATION',
           pubId,
-          `Publication submitted for review: ${publicationData.title}`
+          `Published under domain "${normalizedDomain}": ${publicationData.title}`
         );
 
-        // Notify admins
+        // Notify admins for awareness/moderation
         const admins = db.getUsers().filter(u => u.role === 'ADMIN');
         admins.forEach(admin => {
           db.createNotification({
             recipientUserId: admin.id,
-            type: 'NEW_SUBMISSION',
-            title: 'New Research Paper Submitted',
-            message: `Researcher ${currentUser.firstName} ${currentUser.lastName} submitted "${publicationData.title}" for review.`,
+            type: 'NEW_PUBLICATION',
+            title: 'New Research Paper Published',
+            message: `${currentUser.firstName} ${currentUser.lastName} published "${publicationData.title}" under category "${normalizedDomain}".`,
             relatedPublicationId: pubId,
             isRead: false,
           });
@@ -216,25 +250,17 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
         // Notify submitting author
         db.createNotification({
           recipientUserId: currentUser.id,
-          type: 'SUBMISSION_CONFIRMED',
-          title: 'Manuscript Submitted Successfully',
-          message: `Your paper "${publicationData.title}" has been submitted and queued for editorial verification.`,
+          type: 'PUBLICATION_LIVE',
+          title: 'Paper Published to Repository',
+          message: `Your paper "${publicationData.title}" is now live in the "${normalizedDomain}" category.`,
           relatedPublicationId: pubId,
           isRead: false,
         });
 
-        // Send submission receipt to author's device via Gmail
-        if (isGoogleConnected()) {
-          sendGmailNotification({
-            toEmail: currentUser.email,
-            recipientName: `${currentUser.firstName} ${currentUser.lastName}`,
-            subject: `[BRAIN HUB] Submission Receipt: "${publicationData.title}"`,
-            headerTitle: 'Manuscript Submitted for Review',
-            bodyContent: `Your research manuscript "${publicationData.title}" has been submitted to the editorial review board. You will receive email notifications directly on your devices as reviews proceed.`,
-            paperTitle: publicationData.title,
-            paperStatus: 'SUBMITTED',
-          }).catch(console.error);
-        }
+        triggerDeviceNotification(
+          'Paper Published on BRAIN HUB',
+          `"${publicationData.title}" is now live under ${normalizedDomain}.`
+        );
       } else {
         db.recordAudit(
           currentUser,
@@ -261,10 +287,10 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
         <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
           <div>
             <h2 className="text-base font-bold text-[#1E1B4B]">
-              {editPublication ? 'Edit Publication Draft' : 'Draft New Research Publication'}
+              {editPublication ? 'Edit Research Paper' : 'Submit & Publish Research Paper'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Enter academic metadata, contributing researchers, and research manuscript.
+              Enter your research domain, metadata, contributing authors, and manuscript (PDF, DOCX, PPTX, etc.).
             </p>
           </div>
           <button
@@ -277,6 +303,15 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
 
         {/* Form Body */}
         <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {!isAccountVerified && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-xs text-amber-900">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Account Pending Verification:</strong> You can save drafts now, and once your account is verified in the Admin Dashboard you can publish directly to the repository.
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-2.5 text-xs text-rose-700">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -301,21 +336,44 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Research Domain / Discipline *
+                Research Domain / Category *
               </label>
-              <select
-                value={researchArea}
-                onChange={(e) => setResearchArea(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
-              >
-                <option value="Computer Science & AI">Computer Science & AI</option>
-                <option value="Computational Neuroscience">Computational Neuroscience</option>
-                <option value="Distributed Systems">Distributed Systems</option>
-                <option value="Biomedical Informatics">Biomedical Informatics</option>
-                <option value="Quantum Information Science">Quantum Information Science</option>
-                <option value="Applied Mathematics">Applied Mathematics</option>
-                <option value="Environmental Engineering">Environmental Engineering</option>
-              </select>
+              <div className="relative">
+                <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  required
+                  list="domain-suggestions"
+                  value={researchArea}
+                  onChange={(e) => setResearchArea(e.target.value)}
+                  placeholder="e.g. Distributional Systems, Computational Neuroscience"
+                  className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
+                />
+                <datalist id="domain-suggestions">
+                  {suggestedDomains.map((d) => (
+                    <option key={d} value={d} />
+                  ))}
+                </datalist>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Papers sharing the same domain are automatically grouped into one category.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {suggestedDomains.slice(0, 4).map((domain) => (
+                  <button
+                    key={domain}
+                    type="button"
+                    onClick={() => setResearchArea(domain)}
+                    className={`px-2 py-0.5 text-[10px] font-semibold rounded border transition-colors cursor-pointer ${
+                      researchArea.toLowerCase() === domain.toLowerCase()
+                        ? 'bg-[#6D28D9] text-white border-[#6D28D9]'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-purple-300'
+                    }`}
+                  >
+                    {domain}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -327,7 +385,7 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
                 required
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
-                placeholder="tensor, manifolds, neural models"
+                placeholder="consensus, fault tolerance, neural models"
                 className="w-full px-3 py-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#6D28D9] focus:border-[#6D28D9]"
               />
             </div>
@@ -387,7 +445,7 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
                     <input
                       type="email"
                       required
-                      placeholder="Institutional Email"
+                      placeholder="Author Email"
                       value={author.email}
                       onChange={(e) => handleAuthorChange(index, 'email', e.target.value)}
                       className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#6D28D9]"
@@ -407,26 +465,27 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
             </div>
           </div>
 
-          {/* PDF Document Upload */}
+          {/* Document Upload (All Formats) */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Research Manuscript (PDF Document)
+              Research Manuscript (PDF, DOCX, PPTX & All Document Formats)
             </label>
             <div className="p-4 border-2 border-dashed border-slate-200 rounded-lg hover:border-[#6D28D9]/40 transition-colors bg-slate-50/50 flex flex-col items-center justify-center text-center">
               <Upload className="w-8 h-8 text-slate-400 mb-2" />
               <p className="text-xs font-semibold text-slate-700">
                 {existingFileName ? (
-                  <span className="text-[#6D28D9] font-bold">Selected: {existingFileName}</span>
+                  <span className="text-[#6D28D9] font-bold">
+                    Selected ({getDocumentFormatLabel(existingFileName, fileMimeType)}): {existingFileName}
+                  </span>
                 ) : (
-                  'Upload full-text PDF document'
+                  'Upload manuscript in any document format'
                 )}
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                PDF format only. Maximum file size 25MB. Validated on upload.
+                Supports PDF, DOCX, DOC, PPTX, PPT, TXT, RTF, ODT, ODP, XLSX, MD & more. Max 25MB.
               </p>
               <input
                 type="file"
-                accept="application/pdf"
                 onChange={handleFileChange}
                 className="mt-3 block text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#6D28D9] file:text-white hover:file:bg-[#5B21B6] cursor-pointer"
               />
@@ -455,11 +514,11 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
             </button>
             <button
               type="button"
-              disabled={saving}
-              onClick={() => handleSubmit('SUBMIT')}
-              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+              disabled={saving || !isAccountVerified}
+              onClick={() => handleSubmit('PUBLISH')}
+              className="px-4 py-2 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Submit for Review
+              Publish Paper
             </button>
           </div>
         </div>

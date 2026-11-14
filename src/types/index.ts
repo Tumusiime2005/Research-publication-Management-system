@@ -14,7 +14,7 @@ export interface User {
   department?: string;
   profilePhotoUrl?: string;
   emailVerified: boolean;
-  accountStatus: 'ACTIVE' | 'SUSPENDED';
+  accountStatus: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   createdAt: string;
   lastLoginAt?: string;
 }
