@@ -7,7 +7,8 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { PublicationDetailModal } from './components/public/PublicationDetailModal';
 import { AuditLogViewerModal } from './components/admin/AuditLogViewerModal';
 import { Footer } from './components/layout/Footer';
-import { ShieldCheck, Lock, Mail, AlertCircle, LogOut, ExternalLink } from 'lucide-react';
+import { PWAInstallButton } from './components/pwa/PWAInstallButton';
+import { ShieldCheck, Lock, Mail, AlertCircle, LogOut, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function AdminPortalApp() {
   const [adminUser, setAdminUser] = useState<User | null>(authService.getCurrentAdmin());
@@ -23,6 +24,14 @@ export default function AdminPortalApp() {
   // Modals
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(null);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyAdminUrl = () => {
+    const adminUrl = `${window.location.origin}/admin`;
+    navigator.clipboard.writeText(adminUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
 
   useEffect(() => {
     document.title = 'BRAIN HUB - Separate Admin Control Center';
@@ -95,12 +104,24 @@ export default function AdminPortalApp() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <PWAInstallButton label="Install Admin App" variant="dark" />
+
+            <button
+              type="button"
+              onClick={handleCopyAdminUrl}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white/90 hover:text-white bg-purple-900/60 hover:bg-purple-800/70 border border-purple-700/60 rounded-md transition-colors cursor-pointer"
+              title="Copy direct Admin Dashboard URL to bookmark or save"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span className="hidden md:inline">{copiedLink ? 'Link Copied!' : 'Copy Admin Link'}</span>
+            </button>
+
             <a
               href="/"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#B0D9F2] hover:text-white border border-purple-700/60 hover:border-purple-500 rounded-md transition-colors"
             >
-              <span>Open User Portal</span>
+              <span className="hidden sm:inline">User Portal</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
 
@@ -110,7 +131,7 @@ export default function AdminPortalApp() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-rose-600/90 hover:bg-rose-600 rounded-md transition-colors cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Sign Out
+                <span className="hidden sm:inline">Sign Out</span>
               </button>
             )}
           </div>

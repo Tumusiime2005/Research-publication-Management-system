@@ -14,6 +14,22 @@ const isSeparateAdminPortal =
     window.location.hash.startsWith('#/admin') ||
     new URLSearchParams(window.location.search).get('portal') === 'admin');
 
+if (isSeparateAdminPortal && typeof document !== 'undefined') {
+  const existingManifest = document.querySelector('link[rel="manifest"]');
+  if (existingManifest) {
+    existingManifest.setAttribute('href', '/admin-manifest.webmanifest');
+  } else {
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = '/admin-manifest.webmanifest';
+    document.head.appendChild(link);
+  }
+  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (appleTitle) {
+    appleTitle.setAttribute('content', 'BRAIN HUB Admin');
+  }
+}
+
 createRoot(document.getElementById('root')!).render(
   isSeparateAdminPortal ? <AdminPortalApp /> : <App />
 );

@@ -1,0 +1,31 @@
+{
+  "id": "/admin",
+  "name": "BRAIN HUB Admin Console",
+  "short_name": "BRAIN HUB Admin",
+  "description": "Standalone Administrator Control Center for BRAIN HUB Account Verification & Moderation",
+  "theme_color": "#1E1B4B",
+  "background_color": "#F8FAFC",
+  "display": "standalone",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
