@@ -3,12 +3,13 @@ import { User, Publication, StoredUser } from './types';
 import { authService, subscribeToAdminAuth } from './services/auth';
 import { db, subscribeToDb } from './services/db';
 import { initFirestoreSync } from './services/firestoreSync';
-import { AdminDashboard } from './components/admin/AdminDashboard';
+import { AdminDashboard, AdminTab } from './components/admin/AdminDashboard';
 import { PublicationDetailModal } from './components/public/PublicationDetailModal';
 import { AuditLogViewerModal } from './components/admin/AuditLogViewerModal';
 import { Footer } from './components/layout/Footer';
 import { PWAInstallButton } from './components/pwa/PWAInstallButton';
-import { ShieldCheck, Lock, Mail, AlertCircle, LogOut, ExternalLink, Copy, Check } from 'lucide-react';
+import { OfflineIndicator } from './components/pwa/OfflineIndicator';
+import { ShieldCheck, Lock, Mail, AlertCircle, LogOut, ExternalLink, Copy, Check, Users, FileText, Shield, History } from 'lucide-react';
 
 export default function AdminPortalApp() {
   const [adminUser, setAdminUser] = useState<User | null>(authService.getCurrentAdmin());
@@ -21,7 +22,8 @@ export default function AdminPortalApp() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Modals
+  // Modals & Navigation
+  const [activeTab, setActiveTab] = useState<AdminTab>('accounts');
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(null);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -83,29 +85,29 @@ export default function AdminPortalApp() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#1E1B4B]">
       {/* Standalone Admin Header */}
-      <header className="sticky top-0 z-30 bg-[#1E1B4B] text-white border-b border-purple-900/40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 bg-[#1E1B4B] text-white border-b border-purple-900/40 shadow-sm pt-safe">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 md:h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <img
               src="/assets/aistudio/image_c3fb1387_fb406a7b.jpg"
               alt="BRAIN HUB"
-              className="h-9 w-auto object-contain rounded bg-white p-0.5"
+              className="h-8 md:h-9 w-auto object-contain rounded bg-white p-0.5 shrink-0"
             />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-extrabold tracking-tight">BRAIN HUB</span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#6D28D9] text-white uppercase">
-                  Admin Console
+                <span className="text-sm font-extrabold tracking-tight truncate">BRAIN HUB</span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#6D28D9] text-white uppercase shrink-0">
+                  Admin
                 </span>
               </div>
-              <p className="text-[11px] text-[#B0D9F2]">
-                External Account Verification & Repository Moderation
+              <p className="hidden sm:block text-[11px] text-[#B0D9F2] truncate">
+                Registered Accounts Directory & Repository Moderation
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <PWAInstallButton label="Install Admin App" variant="dark" />
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <PWAInstallButton label="Install Admin App" mobileLabel="Get App" variant="dark" />
 
             <button
               type="button"
@@ -213,6 +215,8 @@ export default function AdminPortalApp() {
             currentUser={adminUser}
             publications={publications}
             users={users}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
             onInspectPublication={(pub) => setSelectedPublication(pub)}
             onViewAuditLogs={() => setAuditModalOpen(true)}
             onRefresh={handleRefresh}
@@ -221,6 +225,45 @@ export default function AdminPortalApp() {
       </main>
 
       <Footer />
+
+      {adminUser && (
+        <nav
+          aria-label="Mobile Admin Navigation"
+          className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-[#1E1B4B]/95 backdrop-blur-md border-t border-purple-900/60 pb-safe shadow-[0_-4px_20px_rgba(15,23,42,0.18)]"
+        >
+          <div className="grid grid-cols-4 items-center h-14 px-1">
+            {[
+              { id: 'accounts' as const, label: 'Accounts', icon: Users },
+              { id: 'papers' as const, label: 'Papers', icon: FileText },
+              { id: 'admins' as const, label: 'Security', icon: Shield },
+              { id: 'audit' as const, label: 'Audit', icon: History },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`min-h-[44px] flex flex-col items-center justify-center rounded-xl transition-colors active:scale-95 cursor-pointer ${
+                    isActive ? 'text-[#B0D9F2]' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="text-[10px] font-semibold tracking-tight mt-0.5 whitespace-nowrap">
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
+      <OfflineIndicator />
 
       <PublicationDetailModal
         publication={selectedPublication}

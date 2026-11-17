@@ -25,10 +25,14 @@ import {
   Lock,
 } from 'lucide-react';
 
+export type AdminTab = 'accounts' | 'papers' | 'admins' | 'audit';
+
 interface AdminDashboardProps {
   currentUser: User;
   publications: Publication[];
   users: StoredUser[];
+  activeTab?: AdminTab;
+  onTabChange?: (tab: AdminTab) => void;
   onInspectPublication: (pub: Publication) => void;
   onViewAuditLogs: () => void;
   onRefresh: () => void;
@@ -38,14 +42,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   currentUser,
   publications,
   users,
+  activeTab: controlledTab,
+  onTabChange,
   onInspectPublication,
   onViewAuditLogs,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'papers' | 'admins' | 'audit'>('accounts');
+  const [internalTab, setInternalTab] = useState<AdminTab>('accounts');
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = (tab: AdminTab) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  };
 
   // Accounts filter & search
-  const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'PENDING' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+  const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
   const [accountSearch, setAccountSearch] = useState('');
 
   // Papers moderation filter & search
@@ -78,11 +89,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const researchers = useMemo(() => {
     return users
       .filter(u => u.role === 'RESEARCHER')
-      .sort((a, b) => {
-        if (a.accountStatus === 'PENDING' && b.accountStatus !== 'PENDING') return -1;
-        if (a.accountStatus !== 'PENDING' && b.accountStatus === 'PENDING') return 1;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [users]);
 
   const admins = useMemo(() => {
@@ -105,14 +112,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [publications]);
 
   const stats = useMemo(() => {
-    const pendingAccounts = researchers.filter(r => r.accountStatus === 'PENDING').length;
-    const activeAccounts = researchers.filter(r => r.accountStatus === 'ACTIVE').length;
+    const activeAccounts = researchers.filter(r => r.accountStatus !== 'SUSPENDED').length;
     const suspendedAccounts = researchers.filter(r => r.accountStatus === 'SUSPENDED').length;
     const publishedPapers = publications.filter(p => p.status === 'APPROVED').length;
 
     return {
       totalAccounts: researchers.length,
-      pendingAccounts,
       activeAccounts,
       suspendedAccounts,
       publishedPapers,
@@ -152,8 +157,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .sort((a, b) => a.researchArea.localeCompare(b.researchArea));
   }, [publications, domainFilter, paperSearch]);
 
-  const handleVerifyAccount = (userId: string) => {
-    authService.verifyUserAccount(currentUser, userId);
+  const handleReactivateAccount = (userId: string) => {
+    authService.reactivateUserAccount(currentUser, userId);
     onRefresh();
   };
 
@@ -261,10 +266,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span className="text-emerald-700 font-mono">Live Cloud Link Active</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-[#1E1B4B]">
-            Account Verification & Repository Moderation
+            Accounts Directory & Repository Moderation
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Verify newly created researcher accounts and remove unuseful or off-topic papers from domain categories.
+            View registered researcher accounts and remove unuseful or off-topic papers from domain categories.
           </p>
         </div>
 
@@ -280,7 +285,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Metrics Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200">
           <p className="text-xs font-medium text-slate-500">Total Accounts</p>
           <p className="text-2xl font-bold text-[#1E1B4B] font-mono tabular-nums mt-1">
@@ -288,15 +293,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </p>
         </div>
 
-        <div className="bg-amber-50/40 p-4 rounded-xl border border-amber-200">
-          <p className="text-xs font-bold text-amber-800">Pending Verify</p>
-          <p className="text-2xl font-bold text-amber-700 font-mono tabular-nums mt-1">
-            {stats.pendingAccounts}
-          </p>
-        </div>
-
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-xs font-medium text-slate-500">Verified Active</p>
+          <p className="text-xs font-medium text-slate-500">Active Researchers</p>
           <p className="text-2xl font-bold text-emerald-600 font-mono tabular-nums mt-1">
             {stats.activeAccounts}
           </p>
@@ -335,7 +333,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          Accounts & Verification ({stats.pendingAccounts} pending)
+          Registered Accounts ({stats.totalAccounts})
         </button>
 
         <button
@@ -391,7 +389,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto scrollbar-none">
-              {(['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED'] as const).map((status) => (
+              {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map((status) => (
                 <button
                   key={status}
                   onClick={() => setAccountStatusFilter(status)}
@@ -403,10 +401,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   {status === 'ALL'
                     ? 'All Accounts'
-                    : status === 'PENDING'
-                    ? `Pending (${stats.pendingAccounts})`
                     : status === 'ACTIVE'
-                    ? `Verified (${stats.activeAccounts})`
+                    ? `Active (${stats.activeAccounts})`
                     : `Suspended (${stats.suspendedAccounts})`}
                 </button>
               ))}
@@ -418,7 +414,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
               <p className="text-xs font-bold text-slate-700">No Matching Accounts Found</p>
               <p className="text-xs text-slate-400 mt-1">
-                When users register in the BRAIN HUB Researcher App, their accounts appear here immediately for verification.
+                When users register in the BRAIN HUB Researcher App, their accounts appear here immediately.
               </p>
             </div>
           ) : (
@@ -437,14 +433,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </h4>
                         <span
                           className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${
-                            r.accountStatus === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : r.accountStatus === 'PENDING'
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            r.accountStatus === 'SUSPENDED'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                           }`}
                         >
-                          {r.accountStatus === 'ACTIVE' ? 'VERIFIED ACTIVE' : r.accountStatus}
+                          {r.accountStatus === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 font-mono">{r.email}</p>
@@ -458,16 +452,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      {r.accountStatus !== 'ACTIVE' && (
+                      {r.accountStatus === 'SUSPENDED' ? (
                         <button
-                          onClick={() => handleVerifyAccount(r.id)}
+                          onClick={() => handleReactivateAccount(r.id)}
                           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors shadow-xs cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          Verify Account
+                          Reactivate
                         </button>
-                      )}
-                      {r.accountStatus === 'ACTIVE' && (
+                      ) : (
                         <button
                           onClick={() => handleSuspendAccount(r.id)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-colors cursor-pointer"

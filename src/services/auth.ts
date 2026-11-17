@@ -97,7 +97,7 @@ export const authService = {
       return { success: false, error: 'An account with this email address already exists. Please sign in instead.' };
     }
 
-    // Newly registered user starts in PENDING status until verified by the Separate Admin Dashboard
+    // Researchers become active immediately upon registration so anyone can upload & publish
     const newUser: StoredUser = {
       id: generateUUID(),
       firstName: data.firstName.trim(),
@@ -107,33 +107,33 @@ export const authService = {
       role: 'RESEARCHER',
       institution: data.institution?.trim() || 'Independent Scholar / Researcher',
       department: data.department ? data.department.trim() : undefined,
-      emailVerified: false,
-      accountStatus: 'PENDING',
+      emailVerified: true,
+      accountStatus: 'ACTIVE',
       createdAt: new Date().toISOString(),
     };
 
     db.saveUser(newUser);
     const sanitized = sanitizeUser(newUser);
-    db.recordAudit(sanitized, 'REGISTER_RESEARCHER', 'USER', sanitized.id, `Researcher ${sanitized.email} registered (Pending Admin Verification)`);
+    db.recordAudit(sanitized, 'REGISTER_RESEARCHER', 'USER', sanitized.id, `Researcher ${sanitized.email} registered (Active)`);
     this.setCurrentUser(sanitized);
 
-    // Notify researcher of pending verification
+    // Welcome notification to researcher
     db.createNotification({
       recipientUserId: newUser.id,
-      type: 'ACCOUNT_PENDING',
-      title: 'Account Created — Pending Verification',
-      message: 'Your researcher account has been submitted to the Administrator Dashboard for verification. You will be notified as soon as your account is verified.',
+      type: 'ACCOUNT_READY',
+      title: 'Welcome to BRAIN HUB — Ready to Upload',
+      message: 'Your researcher account is active. You can upload and publish research papers immediately into any domain category.',
       isRead: false,
     });
 
-    // Notify administrators in the Admin Dashboard
+    // Awareness notification for administrators
     const admins = db.getUsers().filter(u => u.role === 'ADMIN');
     admins.forEach(admin => {
       db.createNotification({
         recipientUserId: admin.id,
-        type: 'NEW_ACCOUNT_REQUEST',
-        title: 'New Account Awaiting Verification',
-        message: `${newUser.firstName} ${newUser.lastName} (${newUser.email}) registered and requires admin verification.`,
+        type: 'NEW_ACCOUNT_CREATED',
+        title: 'New Researcher Joined',
+        message: `${newUser.firstName} ${newUser.lastName} (${newUser.email}) created a researcher account.`,
         isRead: false,
       });
     });
@@ -155,6 +155,11 @@ export const authService = {
 
     if (user.accountStatus === 'SUSPENDED') {
       return { success: false, error: 'Your account has been suspended by the system administrator.' };
+    }
+
+    if (user.accountStatus === 'PENDING') {
+      user.accountStatus = 'ACTIVE';
+      user.emailVerified = true;
     }
 
     user.lastLoginAt = new Date().toISOString();
@@ -228,7 +233,7 @@ export const authService = {
     this.setCurrentAdmin(null);
   },
 
-  verifyUserAccount(adminActor: User, targetUserId: string): { success: boolean; error?: string } {
+  reactivateUserAccount(adminActor: User, targetUserId: string): { success: boolean; error?: string } {
     if (adminActor.role !== 'ADMIN') {
       return { success: false, error: 'Unauthorized action.' };
     }
@@ -241,12 +246,12 @@ export const authService = {
     target.emailVerified = true;
     db.saveUser(target);
 
-    db.recordAudit(adminActor, 'VERIFY_ACCOUNT', 'USER', target.id, `Verified account for ${target.email}`);
+    db.recordAudit(adminActor, 'REACTIVATE_ACCOUNT', 'USER', target.id, `Reactivated account for ${target.email}`);
     db.createNotification({
       recipientUserId: target.id,
-      type: 'ACCOUNT_VERIFIED',
-      title: 'Account Verified by Administrator',
-      message: 'Your BRAIN HUB researcher account has been verified! You can now publish research papers directly to the public repository.',
+      type: 'ACCOUNT_REACTIVATED',
+      title: 'Account Reactivated',
+      message: 'Your BRAIN HUB account access has been restored. You can continue uploading and publishing papers.',
       isRead: false,
     });
 

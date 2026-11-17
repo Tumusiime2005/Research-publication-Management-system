@@ -3,7 +3,7 @@ import { Publication, User, PublicationAuthor } from '../../types';
 import { db, generateUUID, normalizeDomainName } from '../../services/db';
 import { getDocumentFormatLabel, inferDocumentMimeType, isDangerousExecutable } from '../../services/utils';
 import { triggerDeviceNotification } from '../../services/deviceNotifications';
-import { X, Plus, Trash2, Upload, AlertCircle, ShieldAlert, Tag } from 'lucide-react';
+import { X, Plus, Trash2, Upload, AlertCircle, Tag } from 'lucide-react';
 
 interface PublicationFormModalProps {
   isOpen: boolean;
@@ -46,8 +46,6 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const isAccountVerified = currentUser.accountStatus === 'ACTIVE';
 
   // Collect all active domains from existing publications + defaults for instant suggestions
   const suggestedDomains = useMemo(() => {
@@ -151,11 +149,6 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
 
   const handleSubmit = (actionType: 'DRAFT' | 'PUBLISH') => {
     setError(null);
-
-    if (actionType === 'PUBLISH' && !isAccountVerified) {
-      setError('Your researcher account is awaiting verification from the Administrator Dashboard. Save as Draft now, and publish once verified.');
-      return;
-    }
 
     if (title.trim().length < 5) {
       setError('Publication title must be at least 5 characters in length.');
@@ -281,10 +274,13 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-in fade-in">
-      <div className="relative w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-in fade-in">
+      <div className="relative w-full max-w-3xl bg-white rounded-t-3xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden sm:my-8 max-h-[94vh] flex flex-col">
+        {/* Mobile grab handle */}
+        <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-100 bg-slate-50/50 shrink-0">
           <div>
             <h2 className="text-base font-bold text-[#1E1B4B]">
               {editPublication ? 'Edit Research Paper' : 'Submit & Publish Research Paper'}
@@ -295,23 +291,15 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer shrink-0 ml-2"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
-          {!isAccountVerified && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-xs text-amber-900">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                <strong>Account Pending Verification:</strong> You can save drafts now, and once your account is verified in the Admin Dashboard you can publish directly to the repository.
-              </span>
-            </div>
-          )}
-
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-2.5 text-xs text-rose-700">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -494,11 +482,11 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
         </div>
 
         {/* Modal Actions */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3">
+        <div className="p-4 pb-safe border-t border-slate-100 bg-slate-50/90 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-md cursor-pointer"
+            className="min-h-[44px] sm:min-h-[36px] px-3 sm:px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg sm:rounded-md cursor-pointer"
           >
             Cancel
           </button>
@@ -508,15 +496,15 @@ export const PublicationFormModal: React.FC<PublicationFormModalProps> = ({
               type="button"
               disabled={saving}
               onClick={() => handleSubmit('DRAFT')}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+              className="min-h-[44px] sm:min-h-[36px] px-3.5 sm:px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg sm:rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
-              Save as Draft
+              Save Draft
             </button>
             <button
               type="button"
-              disabled={saving || !isAccountVerified}
+              disabled={saving}
               onClick={() => handleSubmit('PUBLISH')}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="min-h-[44px] sm:min-h-[36px] px-4 py-2 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-lg sm:rounded-md transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Publish Paper
             </button>

@@ -14,11 +14,13 @@ import { PublicationFormModal } from './components/researcher/PublicationFormMod
 import { AuthModal } from './components/auth/AuthModal';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
+import { MobileBottomNav } from './components/layout/MobileBottomNav';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [publications, setPublications] = useState<Publication[]>(db.getPublications());
   const [currentView, setCurrentView] = useState<'public' | 'researcher'>('public');
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   // Track notified IDs so incoming Firestore alerts trigger device notifications once
   const seenNotifIdsRef = useRef<Set<string>>(new Set());
@@ -41,8 +43,19 @@ export default function App() {
       db.getNotifications(currentUser.id).forEach(n => seenNotifIdsRef.current.add(n.id));
     }
 
+    const syncUnread = () => {
+      const u = authService.getCurrentUser();
+      if (u) {
+        setUnreadCount(db.getNotifications(u.id).filter(n => !n.isRead).length);
+      } else {
+        setUnreadCount(0);
+      }
+    };
+    syncUnread();
+
     const unsubAuth = subscribeToAuth((u) => {
       setCurrentUser(u);
+      syncUnread();
       if (!u && currentView === 'researcher') {
         setCurrentView('public');
       }
@@ -50,6 +63,7 @@ export default function App() {
 
     const unsubDb = subscribeToDb(() => {
       setPublications(db.getPublications());
+      syncUnread();
     });
 
     // Real-time Cloud Sync via Firestore (linked directly with the separate Admin Dashboard)
@@ -118,7 +132,7 @@ export default function App() {
   };
 
   const handlePublishDraft = (pub: Publication) => {
-    if (!currentUser || currentUser.accountStatus !== 'ACTIVE') return;
+    if (!currentUser || currentUser.accountStatus === 'SUSPENDED') return;
     const now = new Date().toISOString();
     const updated: Publication = {
       ...pub,
@@ -175,7 +189,7 @@ export default function App() {
       />
 
       {/* Main User View Router */}
-      <main className="flex-1">
+      <main className="flex-1 pb-4 md:pb-0">
         {currentView === 'public' && (
           <PublicCatalog
             publications={publications}
@@ -237,6 +251,23 @@ export default function App() {
         currentUser={currentUser}
         onClose={() => setNotificationDrawerOpen(false)}
         onSelectPublication={handleSelectById}
+      />
+
+      <MobileBottomNav
+        currentView={currentView}
+        currentUser={currentUser}
+        unreadCount={unreadCount}
+        onNavigate={(view) => {
+          if (view === 'researcher' && !currentUser) {
+            handleOpenAuth('login');
+            return;
+          }
+          setCurrentView(view);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onOpenNewPublication={handleOpenNewPublication}
+        onOpenNotifications={() => setNotificationDrawerOpen(true)}
+        onOpenAuth={handleOpenAuth}
       />
 
       <OfflineIndicator />

@@ -61,7 +61,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const handleSendTestAlert = async () => {
     const ok = await triggerDeviceNotification(
       'BRAIN HUB Test Notification',
-      'Real-time alerts are active for your account verification and published papers.'
+      'Real-time alerts are active for your published papers and account updates.'
     );
     setTestStatus(
       ok
@@ -88,10 +88,10 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/30 backdrop-blur-xs animate-in fade-in">
-      <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col">
+      <div className="absolute inset-y-0 right-0 max-w-full flex sm:pl-10">
+        <div className="w-screen max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col pt-safe pb-safe">
           {/* Header */}
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-[#6D28D9]" />
               <h3 className="text-sm font-bold text-[#1E1B4B]">
@@ -108,7 +108,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllRead}
-                  className="text-[11px] font-medium text-[#6D28D9] hover:underline flex items-center gap-1 cursor-pointer"
+                  className="min-h-[44px] px-2 text-[11px] font-medium text-[#6D28D9] hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <CheckCheck className="w-3.5 h-3.5" />
                   Mark all read
@@ -116,7 +116,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               )}
               <button
                 onClick={onClose}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                aria-label="Close notifications"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -145,7 +146,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               <p className="text-[11px] text-slate-600 leading-snug">
                 {permission === 'granted'
                   ? `Real-time alerts for ${currentUser.email} will notify directly on this device.`
-                  : 'Enable browser/app alerts to get notified instantly when your account is verified or papers are published.'}
+                  : 'Enable browser/app alerts to get notified instantly when your papers are published or moderated.'}
               </p>
 
               {testStatus && (
@@ -185,7 +186,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                 <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-xs font-semibold text-slate-700">No notifications yet</p>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Updates on account verification and published papers will appear here.
+                  Updates on your published papers and account activity will appear here.
                 </p>
               </div>
             ) : (

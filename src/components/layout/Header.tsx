@@ -3,7 +3,7 @@ import { User } from '../../types';
 import { authService, subscribeToAuth } from '../../services/auth';
 import { db, subscribeToDb } from '../../services/db';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
-import { Bell, BookOpen, FileText, LogOut, Plus, CheckCircle2, Clock } from 'lucide-react';
+import { Bell, BookOpen, FileText, LogOut, Plus, CheckCircle2 } from 'lucide-react';
 
 interface HeaderProps {
   currentView: 'public' | 'researcher';
@@ -55,18 +55,18 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 pt-safe">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 md:h-16 flex items-center justify-between gap-2">
         {/* Zone 1: Brand Wordmark */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={() => onNavigate('public')}
-            className="flex items-center gap-3 text-left group transition-opacity hover:opacity-90 cursor-pointer"
+            className="flex items-center gap-2.5 text-left group transition-opacity hover:opacity-90 cursor-pointer min-h-[44px]"
           >
             <img
               src="/assets/aistudio/image_c3fb1387_fb406a7b.jpg"
               alt="BRAIN HUB Logo"
-              className="h-10 w-auto max-w-[200px] object-contain rounded"
+              className="h-8 md:h-10 w-auto max-w-[150px] sm:max-w-[200px] object-contain rounded"
             />
           </button>
         </div>
@@ -105,29 +105,29 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Primary Actions + PWA Install Button */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <PWAInstallButton />
 
           {currentUser ? (
             <>
               <button
                 onClick={onOpenNewPublication}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer whitespace-nowrap"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-all shadow-sm active:scale-[0.98] cursor-pointer whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
                 Publish Paper
               </button>
 
-              {/* Notification Button */}
+              {/* Notification Button (desktop; mobile uses bottom tab bar) */}
               <button
                 onClick={onOpenNotifications}
-                className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="hidden md:flex relative min-h-[44px] min-w-[44px] items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 title="Notifications"
                 aria-label="View notifications"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-4 h-4 bg-[#F97316] text-white text-[10px] font-bold rounded-full flex items-center justify-center tabular-nums">
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-[#F97316] text-white text-[10px] font-bold rounded-full flex items-center justify-center tabular-nums">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -137,9 +137,10 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-left"
+                  className="flex items-center gap-2 min-h-[44px] px-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-left"
+                  aria-label="Account menu"
                 >
-                  <div className="w-8 h-8 rounded-full bg-[#B0D9F2]/40 text-[#1E1B4B] flex items-center justify-center font-bold text-xs border border-slate-200">
+                  <div className="w-9 h-9 rounded-full bg-[#B0D9F2]/40 text-[#1E1B4B] flex items-center justify-center font-bold text-xs border border-slate-200">
                     {currentUser.firstName[0]}
                     {currentUser.lastName[0]}
                   </div>
@@ -148,15 +149,9 @@ export const Header: React.FC<HeaderProps> = ({
                       {currentUser.firstName} {currentUser.lastName}
                     </p>
                     <p className="text-[11px] font-medium flex items-center gap-1">
-                      {currentUser.accountStatus === 'ACTIVE' ? (
-                        <span className="text-emerald-700 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Verified
-                        </span>
-                      ) : (
-                        <span className="text-amber-600 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> Pending Verification
-                        </span>
-                      )}
+                      <span className="text-emerald-700 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Active Researcher
+                      </span>
                     </p>
                   </div>
                 </button>
@@ -168,14 +163,8 @@ export const Header: React.FC<HeaderProps> = ({
                         <p className="text-xs font-bold text-slate-900 truncate">
                           {currentUser.firstName} {currentUser.lastName}
                         </p>
-                        <span
-                          className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
-                            currentUser.accountStatus === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-amber-50 text-amber-700'
-                          }`}
-                        >
-                          {currentUser.accountStatus === 'ACTIVE' ? 'VERIFIED' : currentUser.accountStatus}
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                          ACTIVE
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 truncate">{currentUser.email}</p>
@@ -221,18 +210,19 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 onClick={() => onOpenAuth('login')}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 rounded-md transition-colors cursor-pointer"
+                className="hidden sm:inline-flex min-h-[40px] items-center px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 rounded-md transition-colors cursor-pointer whitespace-nowrap"
               >
                 Sign In
               </button>
               <button
                 onClick={() => onOpenAuth('register')}
-                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-all shadow-sm cursor-pointer whitespace-nowrap"
+                className="min-h-[38px] px-3 sm:px-3.5 py-1.5 text-xs font-semibold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-lg transition-all shadow-sm cursor-pointer whitespace-nowrap"
               >
-                Join as Researcher
+                <span className="sm:hidden">Join</span>
+                <span className="hidden sm:inline">Join as Researcher</span>
               </button>
             </div>
           )}

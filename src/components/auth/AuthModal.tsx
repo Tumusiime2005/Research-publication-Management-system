@@ -89,10 +89,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
-      <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-xl shadow-2xl border border-slate-200 overflow-hidden max-h-[94vh] flex flex-col">
+        {/* Mobile grab handle */}
+        <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-slate-50/70 shrink-0">
           <div className="flex items-center gap-3">
             <img
               src="/assets/aistudio/image_c3fb1387_fb406a7b.jpg"
@@ -110,7 +113,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -149,7 +153,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 pb-safe space-y-4 overflow-y-auto flex-1">
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -161,7 +165,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-lg flex items-start gap-2 text-[11px] text-[#1E1B4B]">
               <ShieldCheck className="w-4 h-4 text-[#6D28D9] shrink-0 mt-0.5" />
               <span className="leading-relaxed">
-                Register with any valid email address. Your account will be verified by the system administrator before you can publish papers publicly.
+                Register with any valid email address to immediately upload and publish research papers to the public repository.
               </span>
             </div>
           )}
@@ -276,7 +280,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-md transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[44px] py-2.5 px-4 text-xs font-bold text-white bg-[#6D28D9] hover:bg-[#5B21B6] rounded-xl sm:rounded-md transition-all shadow-sm disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 'Processing...'

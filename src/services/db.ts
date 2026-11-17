@@ -68,7 +68,11 @@ ensureInitializedAccounts();
 export const db = {
   // --- USERS ---
   getUsers(): StoredUser[] {
-    const users = getStored<StoredUser[]>('users', []);
+    const users = getStored<StoredUser[]>('users', []).map((u) =>
+      u.role === 'RESEARCHER' && u.accountStatus === 'PENDING'
+        ? { ...u, accountStatus: 'ACTIVE' as const, emailVerified: true }
+        : u
+    );
     if (!users.some(u => u.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase())) {
       users.unshift(INITIAL_MAIN_ADMIN);
       setStored('users', users);
@@ -111,7 +115,13 @@ export const db = {
     if (!authoritative) {
       this.getUsers().forEach(u => map.set(u.id, u));
     }
-    cloudUsers.forEach(u => map.set(u.id, u));
+    cloudUsers.forEach((u) => {
+      const normalized =
+        u.role === 'RESEARCHER' && u.accountStatus === 'PENDING'
+          ? { ...u, accountStatus: 'ACTIVE' as const, emailVerified: true }
+          : u;
+      map.set(normalized.id, normalized);
+    });
     if (!map.has(INITIAL_MAIN_ADMIN.id)) {
       map.set(INITIAL_MAIN_ADMIN.id, INITIAL_MAIN_ADMIN);
     }

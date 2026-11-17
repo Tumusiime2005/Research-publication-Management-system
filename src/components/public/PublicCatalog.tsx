@@ -71,9 +71,9 @@ export const PublicCatalog: React.FC<PublicCatalogProps> = ({
   }, [filteredPublications]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-6 sm:space-y-8">
       {/* Hero Section */}
-      <div className="bg-white rounded-xl p-8 border border-slate-200/80 shadow-xs relative overflow-hidden">
+      <div className="bg-white rounded-2xl sm:rounded-xl p-5 sm:p-8 border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="max-w-3xl relative z-10">
           <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#6D28D9] mb-3">
             <span>Open Access Academic Commons</span>
@@ -129,7 +129,7 @@ export const PublicCatalog: React.FC<PublicCatalogProps> = ({
         </span>
         <button
           onClick={() => setSelectedArea('ALL')}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors shrink-0 cursor-pointer ${
+          className={`min-h-[40px] px-3.5 py-1.5 text-xs font-semibold rounded-lg sm:rounded-md transition-colors shrink-0 cursor-pointer ${
             selectedArea === 'ALL'
               ? 'bg-[#6D28D9] text-white'
               : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
@@ -141,7 +141,7 @@ export const PublicCatalog: React.FC<PublicCatalogProps> = ({
           <button
             key={cat.name}
             onClick={() => setSelectedArea(cat.name)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors shrink-0 cursor-pointer ${
+            className={`min-h-[40px] px-3.5 py-1.5 text-xs font-semibold rounded-lg sm:rounded-md transition-colors shrink-0 cursor-pointer ${
               selectedArea === cat.name
                 ? 'bg-[#6D28D9] text-white'
                 : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'

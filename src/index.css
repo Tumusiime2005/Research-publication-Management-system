@@ -10,14 +10,40 @@
     --text-dark: #1E1B4B;
   }
 
+  html {
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     color: var(--text-dark);
     background-color: var(--bg-light);
+    touch-action: manipulation;
   }
 
   code, pre, .font-mono, .tabular-nums {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
     font-variant-numeric: tabular-nums;
   }
+
+  @media (max-width: 639px) {
+    input[type='text'],
+    input[type='email'],
+    input[type='password'],
+    input[type='search'],
+    textarea,
+    select {
+      font-size: 16px;
+    }
+  }
 }
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
